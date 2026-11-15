@@ -3,7 +3,12 @@ import { UploadCloud } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import type { QualityPreference } from '@shared/types'
-import { MAX_BATCH_WARNING, QUALITY_LABELS, QUALITY_ORDER } from '@shared/constants'
+import {
+  MAX_BATCH_WARNING,
+  MAX_PREVIEW_SECONDS,
+  QUALITY_LABELS,
+  QUALITY_ORDER
+} from '@shared/constants'
 import { useAppStore } from '../store/app-store'
 import { errorMessage, unwrap } from '../lib/api'
 import { TrackTable } from './TrackTable'
@@ -137,7 +142,7 @@ export function BatchDialog() {
             </div>
             <div className="flex items-center gap-2">
               <Badge tone="accent">{tracks[0]?.provider.toUpperCase() ?? 'SOURCE'}</Badge>
-              <Badge tone="default">30 秒试听可用</Badge>
+              <Badge tone="default">{MAX_PREVIEW_SECONDS} 秒试听可用</Badge>
             </div>
           </div>
           <Progress

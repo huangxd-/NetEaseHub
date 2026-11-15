@@ -28,7 +28,13 @@ import type {
   SourceScriptInfo,
   UpdateInfo
 } from '@shared/types'
-import { PROVIDERS, QUALITY_LABELS, QUALITY_ORDER, RELEASE_URL } from '@shared/constants'
+import {
+  MAX_PREVIEW_SECONDS,
+  PROVIDERS,
+  QUALITY_LABELS,
+  QUALITY_ORDER,
+  RELEASE_URL
+} from '@shared/constants'
 import { useAppStore } from '../store/app-store'
 import { errorMessage, unwrap } from '../lib/api'
 import { SourceImportDialog } from '../components/SourceImportDialog'
@@ -604,7 +610,7 @@ export function SettingsPage() {
         <span>NetEaseHub {appInfo?.version ? `v${appInfo.version}` : ''} · Apache-2.0</span>
         <span className="flex items-center gap-2">
           <Gauge size={11} />
-          五大平台搜索 · 多源回退 · 30 秒试听 · 云盘匹配
+          五大平台搜索 · 多源回退 · {MAX_PREVIEW_SECONDS} 秒试听 · 云盘匹配
         </span>
       </div>
 

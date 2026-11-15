@@ -33,6 +33,34 @@ export interface ProviderSearchResult {
   error?: string
 }
 
+export type SearchKind = 'song' | 'album' | 'playlist' | 'artist'
+export type SearchEntityKind = Exclude<SearchKind, 'song'>
+
+export interface SearchEntityRef {
+  key: string
+  provider: ProviderId
+  kind: SearchEntityKind
+  id: string
+  name: string
+  coverUrl?: string
+  author?: string
+  subtitle?: string
+  trackCount?: number
+  albumCount?: number
+  songCount?: number
+}
+
+export interface ProviderEntitySearchResult {
+  provider: ProviderId
+  kind: SearchEntityKind
+  list: SearchEntityRef[]
+  total: number
+  page: number
+  limit: number
+  hasMore: boolean
+  error?: string
+}
+
 export interface CatalogInfo {
   kind: 'album' | 'playlist'
   provider: ProviderId
@@ -191,7 +219,7 @@ export interface PreviewLease {
   trackKey: string
   streamUrl: string
   expiresAt: number
-  maxPlaybackSec: 30
+  maxPlaybackSec: 60
 }
 
 export interface AppSettings {
@@ -294,6 +322,31 @@ export interface SearchRequest {
   provider: ProviderId | 'all'
   page?: number
   limit?: number
+}
+
+export interface EntitySearchRequest {
+  query: string
+  provider: ProviderId | 'all'
+  kind: SearchEntityKind
+  page?: number
+  limit?: number
+}
+
+export interface ArtistTracksRequest {
+  provider: ProviderId
+  artistId: string
+  page?: number
+  limit?: number
+}
+
+export interface ProviderArtistTracksResult {
+  provider: ProviderId
+  artistId: string
+  list: TrackRef[]
+  page: number
+  limit: number
+  hasMore: boolean
+  total?: number
 }
 
 export interface CatalogLinkRequest {

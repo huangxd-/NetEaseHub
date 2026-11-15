@@ -1,6 +1,6 @@
 import { Check, Music2, Pencil, Play, UploadCloud } from 'lucide-react'
 import type { TrackRef } from '@shared/types'
-import { PROVIDERS, QUALITY_LABELS } from '@shared/constants'
+import { MAX_PREVIEW_SECONDS, PROVIDERS, QUALITY_LABELS } from '@shared/constants'
 import { formatDuration } from '@shared/utils'
 import { usePreview } from './PreviewPlayer'
 import { Badge, Button, IconButton, cn } from './ui'
@@ -117,7 +117,7 @@ export function TrackTable({
                     isPlaying && 'opacity-100'
                   )}
                   onClick={() => void preview.playTrack(track)}
-                  aria-label="试听 30 秒"
+                  aria-label={`试听 ${MAX_PREVIEW_SECONDS} 秒`}
                 >
                   <Play size={14} fill="currentColor" className="translate-x-[1px]" />
                 </button>
@@ -151,8 +151,8 @@ export function TrackTable({
             <div className="flex items-center justify-end gap-1">
               <IconButton
                 onClick={() => void preview.playTrack(track)}
-                title="试听 30 秒"
-                aria-label="试听 30 秒"
+                title={`试听 ${MAX_PREVIEW_SECONDS} 秒`}
+                aria-label={`试听 ${MAX_PREVIEW_SECONDS} 秒`}
               >
                 <Play size={14} />
               </IconButton>

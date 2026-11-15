@@ -1,4 +1,4 @@
-import type { Quality, TrackRef } from '@shared/types'
+import type { Quality, SearchEntityRef, TrackRef } from '@shared/types'
 import {
   formatDuration,
   parseDuration,
@@ -77,11 +77,15 @@ export function formatSize(bytes: unknown): string | null {
 export function decodeName(value: unknown): string {
   if (typeof value !== 'string') return ''
   return value
+    .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
+    .replace(/\\u([0-9a-f]{4})/gi, (_, code: string) =>
+      String.fromCharCode(Number.parseInt(code, 16))
+    )
     .replace(/\u0000/g, '')
     .trim()
 }
@@ -93,4 +97,16 @@ export function parseInterval(value: unknown): number | undefined {
 
 export function trimTitleSuffix(value: string): string {
   return value.replace(/\s+/g, ' ').trim()
+}
+
+export function makeEntity(input: Omit<SearchEntityRef, 'key'>): SearchEntityRef {
+  return {
+    ...input,
+    key: `${input.provider}:${input.kind}:${input.id}`
+  }
+}
+
+export function positiveNumber(value: unknown): number | undefined {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
 }

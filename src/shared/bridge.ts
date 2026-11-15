@@ -1,6 +1,7 @@
 import type {
   AppInfo,
   AppSettings,
+  ArtistTracksRequest,
   AuthState,
   CatalogInfo,
   CatalogLinkRequest,
@@ -9,11 +10,14 @@ import type {
   CloudSuggestion,
   DiagnosticResult,
   EnqueueUploadInput,
+  EntitySearchRequest,
   IpcResult,
   MatchCandidate,
   PickedImage,
   PreviewLease,
   PreviewTrackInput,
+  ProviderArtistTracksResult,
+  ProviderEntitySearchResult,
   ProviderSearchResult,
   QrCheckResult,
   QrLoginStart,
@@ -47,6 +51,10 @@ export interface NetEaseHubBridge {
   }
   search: {
     query: (request: SearchRequest) => Promise<IpcResult<ProviderSearchResult[]>>
+    entities: (request: EntitySearchRequest) => Promise<IpcResult<ProviderEntitySearchResult[]>>
+    artistTracks: (
+      request: ArtistTracksRequest
+    ) => Promise<IpcResult<ProviderArtistTracksResult>>
     catalog: (request: CatalogLinkRequest) => Promise<IpcResult<CatalogInfo>>
   }
   preview: {

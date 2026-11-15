@@ -1,7 +1,24 @@
-import type { CatalogInfo, ProviderSearchResult, Quality, TrackRef } from '@shared/types'
+import type {
+  CatalogInfo,
+  ProviderArtistTracksResult,
+  ProviderEntitySearchResult,
+  ProviderSearchResult,
+  Quality,
+  SearchEntityKind,
+  SearchEntityRef,
+  TrackRef
+} from '@shared/types'
 import { createHash, randomBytes } from 'node:crypto'
 import { coverUrl, requestJson } from './http'
-import { decodeName, formatSize, makeTrack, makeTypes, parseInterval } from './helpers'
+import {
+  decodeName,
+  formatSize,
+  makeEntity,
+  makeTrack,
+  makeTypes,
+  parseInterval,
+  positiveNumber
+} from './helpers'
 import { AppError } from '../errors'
 import { formatDuration } from '@shared/utils'
 
@@ -49,6 +66,66 @@ function entriesFromFile(file: Record<string, any>): Array<{ type: Quality; size
     entries.push({ type: 'flac24bit', size: formatSize(file.size_hires) })
   }
   return entries
+}
+
+async function requestTxSearch(
+  query: string,
+  page: number,
+  limit: number,
+  searchType: number
+): Promise<Record<string, any>> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const payload = {
+      comm: {
+        _channelid: '0',
+        _os_version: '6.2.9200-2',
+        ct: '19',
+        cv: '2151',
+        guid: '1F70E520B2EAA7D25E11760783C53CA9',
+        patch: '118',
+        psrf_access_token_expiresAt: 0,
+        psrf_qqaccess_token: '',
+        psrf_qqopenid: '',
+        psrf_qqunionid: '',
+        tmeAppID: 'qqmusic',
+        tmeLoginType: 0,
+        uin: '0',
+        wid: '7223299733393904640'
+      },
+      'music.search.SearchCgiService': {
+        module: 'music.search.SearchCgiService',
+        method: 'DoSearchForQQMusicDesktop',
+        param: {
+          grp: 1,
+          num_per_page: limit,
+          page_num: page,
+          query,
+          remoteplace: 'txt.newclient.top',
+          search_type: searchType,
+          searchid: qqSearchId()
+        }
+      }
+    }
+    const serialized = JSON.stringify(payload)
+    const body = await requestJson<Record<string, any>>(
+      `https://u.y.qq.com/cgi-bin/musics.fcg?sign=${zzcSign(serialized)}`,
+      {
+        method: 'POST',
+        headers: {
+          ...TX_HEADERS,
+          'User-Agent': 'QQMusic 14090508(android 12)',
+          'Content-Type': 'application/json'
+        },
+        data: serialized,
+        retries: 0
+      }
+    )
+    const response = body['music.search.SearchCgiService'] ?? body.req
+    if (body.code === 0 && response?.code === 0 && response.data?.body) {
+      return response.data
+    }
+  }
+  throw new AppError('PROVIDER_SEARCH_FAILED', 'QQ 音乐搜索失败，请稍后重试')
 }
 
 function trackFromRaw(raw: Record<string, any>): TrackRef {
@@ -100,69 +177,165 @@ function trackFromRaw(raw: Record<string, any>): TrackRef {
 }
 
 export async function searchTx(query: string, page: number, limit: number): Promise<ProviderSearchResult> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const payload = {
-      comm: {
-        _channelid: '0',
-        _os_version: '6.2.9200-2',
-        ct: '19',
-        cv: '2151',
-        guid: '1F70E520B2EAA7D25E11760783C53CA9',
-        patch: '118',
-        psrf_access_token_expiresAt: 0,
-        psrf_qqaccess_token: '',
-        psrf_qqopenid: '',
-        psrf_qqunionid: '',
-        tmeAppID: 'qqmusic',
-        tmeLoginType: 0,
-        uin: '0',
-        wid: '7223299733393904640'
-      },
-      'music.search.SearchCgiService': {
-        module: 'music.search.SearchCgiService',
-        method: 'DoSearchForQQMusicDesktop',
-        param: {
-          grp: 1,
-          num_per_page: limit,
-          page_num: page,
-          query,
-          remoteplace: 'txt.newclient.top',
-          search_type: 0,
-          searchid: qqSearchId()
-        }
-      }
-    }
-    const serialized = JSON.stringify(payload)
+  const data = await requestTxSearch(query, page, limit, 0)
+  const rawList = data.body?.song?.list
+  if (!Array.isArray(rawList)) throw new AppError('PROVIDER_SEARCH_FAILED', 'QQ 音乐搜索失败')
+  const total =
+    Number(data.meta?.sum ?? data.meta?.estimate_sum ?? rawList.length) || rawList.length
+  return {
+    provider: 'tx',
+    list: rawList.map(trackFromRaw),
+    total,
+    page,
+    limit,
+    hasMore: page * limit < total
+  }
+}
+
+function entityFromTx(raw: Record<string, any>, kind: SearchEntityKind): SearchEntityRef | null {
+  if (kind === 'album') {
+    const id = String(raw.albumMID ?? '')
+    const name = decodeName(raw.albumName ?? '')
+    if (!id || !name) return null
+    return makeEntity({
+      provider: 'tx',
+      kind,
+      id,
+      name,
+      author: decodeName(raw.singerName ?? ''),
+      coverUrl: coverUrl(raw.albumPic),
+      subtitle: decodeName(raw.publicTime ?? ''),
+      trackCount: positiveNumber(raw.song_count)
+    })
+  }
+
+  if (kind === 'artist') {
+    const id = String(raw.singerMID ?? '')
+    const name = decodeName(raw.singerName ?? '')
+    if (!id || !name) return null
+    return makeEntity({
+      provider: 'tx',
+      kind,
+      id,
+      name,
+      coverUrl: coverUrl(raw.singerPic),
+      albumCount: positiveNumber(raw.albumNum),
+      songCount: positiveNumber(raw.songNum)
+    })
+  }
+
+  const id = String(raw.dissid ?? '')
+  const name = decodeName(raw.dissname ?? '')
+  if (!id || !name) return null
+  return makeEntity({
+    provider: 'tx',
+    kind,
+    id,
+    name,
+    author: decodeName(raw.creator?.name ?? ''),
+    coverUrl: coverUrl(raw.imgurl),
+    subtitle: decodeName(raw.introduction ?? '').slice(0, 160),
+    trackCount: positiveNumber(raw.song_count)
+  })
+}
+
+export async function searchTxEntities(
+  kind: SearchEntityKind,
+  query: string,
+  page: number,
+  limit: number
+): Promise<ProviderEntitySearchResult> {
+  if (kind === 'playlist') {
     const body = await requestJson<Record<string, any>>(
-      `https://u.y.qq.com/cgi-bin/musics.fcg?sign=${zzcSign(serialized)}`,
+      `http://c.y.qq.com/soso/fcgi-bin/client_music_search_songlist?page_no=${page - 1}&num_per_page=${limit}&format=json&query=${encodeURIComponent(query)}&remoteplace=txt.yqq.playlist&inCharset=utf8&outCharset=utf-8`,
       {
-        method: 'POST',
         headers: {
           ...TX_HEADERS,
-          'User-Agent': 'QQMusic 14090508(android 12)',
-          'Content-Type': 'application/json'
-        },
-        data: serialized,
-        retries: 0
+          'User-Agent':
+            'Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0)',
+          Referer: 'http://y.qq.com/portal/search.html'
+        }
       }
     )
-    const response = body['music.search.SearchCgiService'] ?? body.req
-    if (body.code !== 0 || response?.code !== 0) continue
-    const rawList = response.data?.body?.song?.list
-    if (!Array.isArray(rawList)) continue
-    const total =
-      Number(response.data?.meta?.sum ?? response.data?.meta?.estimate_sum ?? rawList.length) ||
-      rawList.length
+    const rawList = Array.isArray(body.data?.list) ? body.data.list : []
+    const total = positiveNumber(body.data?.sum) ?? rawList.length
     return {
       provider: 'tx',
-      list: rawList.map(trackFromRaw),
+      kind,
+      list: rawList
+        .map((item: Record<string, any>) => entityFromTx(item, kind))
+        .filter((item: SearchEntityRef | null): item is SearchEntityRef => Boolean(item)),
       total,
       page,
       limit,
       hasMore: page * limit < total
     }
   }
-  throw new AppError('PROVIDER_SEARCH_FAILED', 'QQ 音乐搜索失败，请稍后重试')
+
+  const data = await requestTxSearch(query, page, limit, kind === 'album' ? 2 : 1)
+  const rawList =
+    kind === 'album' ? data.body?.album?.list ?? [] : data.body?.singer?.list ?? []
+  const total = positiveNumber(data.meta?.sum) ?? rawList.length
+  return {
+    provider: 'tx',
+    kind,
+    list: (Array.isArray(rawList) ? rawList : [])
+      .map((item: Record<string, any>) => entityFromTx(item, kind))
+      .filter((item): item is SearchEntityRef => Boolean(item)),
+    total,
+    page,
+    limit,
+    hasMore: page * limit < total
+  }
+}
+
+export async function getTxArtistTracks(
+  artistId: string,
+  page: number,
+  limit: number
+): Promise<ProviderArtistTracksResult> {
+  const body = await requestJson<Record<string, any>>('https://u.y.qq.com/cgi-bin/musicu.fcg', {
+    method: 'POST',
+    headers: {
+      ...TX_HEADERS,
+      'User-Agent': 'Mozilla/5.0',
+      'Content-Type': 'application/json'
+    },
+    data: JSON.stringify({
+      comm: {
+        cv: 4747474,
+        ct: 24,
+        format: 'json',
+        inCharset: 'utf-8',
+        outCharset: 'utf-8',
+        uin: 0
+      },
+      req: {
+        module: 'musichall.song_list_server',
+        method: 'GetSingerSongList',
+        param: {
+          singerMid: artistId,
+          order: 1,
+          begin: (page - 1) * limit,
+          num: limit
+        }
+      }
+    })
+  })
+  if (body.code !== 0 || body.req?.code !== 0) {
+    throw new AppError('ARTIST_TRACKS_FAILED', 'QQ 音乐歌手曲目获取失败')
+  }
+  const rawList = Array.isArray(body.req.data?.songList) ? body.req.data.songList : []
+  const total = positiveNumber(body.req.data?.totalNum) ?? rawList.length
+  return {
+    provider: 'tx',
+    artistId,
+    list: rawList.map((item: Record<string, any>) => trackFromRaw(item.songInfo ?? item)),
+    page,
+    limit,
+    total,
+    hasMore: page * limit < total
+  }
 }
 
 export async function getTxAlbum(id: string): Promise<CatalogInfo> {

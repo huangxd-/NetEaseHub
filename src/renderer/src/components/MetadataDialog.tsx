@@ -3,7 +3,7 @@ import { ImagePlus, Play, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import type { EditableMetadata, QualityPreference, TrackRef, UploadDraft } from '@shared/types'
-import { QUALITY_LABELS, QUALITY_ORDER } from '@shared/constants'
+import { MAX_PREVIEW_SECONDS, QUALITY_LABELS, QUALITY_ORDER } from '@shared/constants'
 import { defaultMetadata, formatDuration, splitArtists } from '@shared/utils'
 import { useAppStore } from '../store/app-store'
 import { errorMessage, unwrap } from '../lib/api'
@@ -194,7 +194,7 @@ export function MetadataDialog({
             </div>
             <Button variant="secondary" onClick={() => void preview.playTrack(targetTrack)}>
               <Play size={14} />
-              试听 30 秒
+              试听 {MAX_PREVIEW_SECONDS} 秒
             </Button>
           </div>
 

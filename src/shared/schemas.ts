@@ -44,6 +44,21 @@ export const searchRequestSchema = z.object({
   limit: z.number().int().min(1).max(100).optional()
 })
 
+export const entitySearchRequestSchema = z.object({
+  query: z.string().trim().min(1).max(200),
+  provider: z.union([providerSchema, z.literal('all')]),
+  kind: z.enum(['album', 'playlist', 'artist']),
+  page: z.number().int().min(1).max(50).optional(),
+  limit: z.number().int().min(1).max(100).optional()
+})
+
+export const artistTracksRequestSchema = z.object({
+  provider: providerSchema,
+  artistId: z.string().trim().min(1).max(200),
+  page: z.number().int().min(1).max(50).optional(),
+  limit: z.number().int().min(1).max(100).optional()
+})
+
 export const catalogRequestSchema = z.object({
   value: z.string().trim().min(1).max(2000),
   provider: providerSchema.optional(),

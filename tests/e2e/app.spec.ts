@@ -20,7 +20,16 @@ test('launches the desktop shell and navigates core pages', async () => {
     await expect(accept).toBeHidden()
     await expect(window.getByText('找到正确的版本')).toBeVisible()
     await expect(
-      window.getByPlaceholder('搜索歌曲、歌手或专辑，例如：周杰伦 夜曲')
+      window.getByPlaceholder('搜索歌曲，例如：周杰伦 夜曲')
+    ).toBeVisible()
+    for (const label of ['歌曲', '专辑', '歌单', '歌手']) {
+      await expect(window.getByRole('button', { name: label, exact: true })).toBeVisible()
+    }
+    await expect(window.getByRole('button', { name: '在线搜索' })).toBeVisible()
+    await expect(window.getByRole('button', { name: '链接解析' })).toBeVisible()
+    await window.getByRole('button', { name: '专辑', exact: true }).click()
+    await expect(
+      window.getByPlaceholder('搜索专辑，例如：十一月的萧邦')
     ).toBeVisible()
 
     await window.getByRole('button', { name: /设置/ }).last().click()
@@ -31,6 +40,27 @@ test('launches the desktop shell and navigates core pages', async () => {
 
     await window.getByRole('button', { name: /云盘管理/ }).click()
     await expect(window.getByText('登录后管理网易云云盘')).toBeVisible()
+
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(1000, 560)
+    })
+    await window.getByRole('button', { name: /设置/ }).last().click()
+    const pageScroll = window.locator('.page-scroll')
+    await expect
+      .poll(() =>
+        pageScroll.evaluate(
+          element => element.scrollHeight > element.clientHeight
+        )
+      )
+      .toBe(true)
+    const metrics = await pageScroll.evaluate(element => ({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight
+    }))
+    expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight)
+    await pageScroll.hover()
+    await window.mouse.wheel(0, 900)
+    await expect.poll(() => pageScroll.evaluate(element => element.scrollTop)).toBeGreaterThan(0)
   } finally {
     await app.close()
   }

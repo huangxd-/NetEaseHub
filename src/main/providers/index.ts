@@ -1,11 +1,48 @@
-import type { CatalogInfo, ProviderId, TrackRef } from '@shared/types'
+import type {
+  CatalogInfo,
+  ProviderArtistTracksResult,
+  ProviderEntitySearchResult,
+  ProviderId,
+  SearchEntityKind,
+  TrackRef
+} from '@shared/types'
 import { PROVIDER_IDS } from '@shared/constants'
 import { AppError } from '../errors'
-import { getKgAlbum, getKgPlaylist, searchKg } from './kg'
-import { getKwAlbum, getKwPlaylist, searchKw } from './kw'
-import { getMgAlbum, getMgPlaylist, searchMg } from './mg'
-import { getTxAlbum, getTxPlaylist, searchTx } from './tx'
-import { getWyAlbum, getWyPlaylist, searchWy } from './wy'
+import {
+  getKgAlbum,
+  getKgArtistTracks,
+  getKgPlaylist,
+  searchKg,
+  searchKgEntities
+} from './kg'
+import {
+  getKwAlbum,
+  getKwArtistTracks,
+  getKwPlaylist,
+  searchKw,
+  searchKwEntities
+} from './kw'
+import {
+  getMgAlbum,
+  getMgArtistTracks,
+  getMgPlaylist,
+  searchMg,
+  searchMgEntities
+} from './mg'
+import {
+  getTxAlbum,
+  getTxArtistTracks,
+  getTxPlaylist,
+  searchTx,
+  searchTxEntities
+} from './tx'
+import {
+  getWyAlbum,
+  getWyArtistTracks,
+  getWyPlaylist,
+  searchWy,
+  searchWyEntities
+} from './wy'
 
 export const providerSearchers: Record<
   ProviderId,
@@ -44,6 +81,81 @@ export async function searchAllProviders(query: string, page = 1, limit = 30) {
       error: result.reason instanceof Error ? result.reason.message : '搜索失败'
     }
   })
+}
+
+type EntitySearcher = (
+  kind: SearchEntityKind,
+  query: string,
+  page: number,
+  limit: number
+) => Promise<ProviderEntitySearchResult>
+
+const providerEntitySearchers: Record<ProviderId, EntitySearcher> = {
+  kw: searchKwEntities,
+  kg: searchKgEntities,
+  tx: searchTxEntities,
+  wy: searchWyEntities,
+  mg: searchMgEntities
+}
+
+export async function searchEntities(
+  provider: ProviderId,
+  kind: SearchEntityKind,
+  query: string,
+  page = 1,
+  limit = 20
+) {
+  return providerEntitySearchers[provider](kind, query, page, limit)
+}
+
+export async function searchAllEntities(
+  query: string,
+  kind: SearchEntityKind,
+  page = 1,
+  limit = 20
+) {
+  const settled = await Promise.allSettled(
+    PROVIDER_IDS.map(provider =>
+      providerEntitySearchers[provider](kind, query, page, limit)
+    )
+  )
+  return settled.map((result, index) => {
+    const provider = PROVIDER_IDS[index]
+    if (result.status === 'fulfilled') return result.value
+    return {
+      provider,
+      kind,
+      list: [],
+      total: 0,
+      page,
+      limit,
+      hasMore: false,
+      error: result.reason instanceof Error ? result.reason.message : '搜索失败'
+    }
+  })
+}
+
+type ArtistTracksLoader = (
+  artistId: string,
+  page: number,
+  limit: number
+) => Promise<ProviderArtistTracksResult>
+
+const artistTracksLoaders: Record<ProviderId, ArtistTracksLoader> = {
+  kw: getKwArtistTracks,
+  kg: getKgArtistTracks,
+  tx: getTxArtistTracks,
+  wy: getWyArtistTracks,
+  mg: getMgArtistTracks
+}
+
+export async function getArtistTracks(
+  provider: ProviderId,
+  artistId: string,
+  page = 1,
+  limit = 50
+) {
+  return artistTracksLoaders[provider](artistId, page, limit)
 }
 
 export async function resolveCatalog(

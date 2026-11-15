@@ -294,7 +294,7 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
                 {MAX_PREVIEW_SECONDS}s
               </span>
             </div>
-            <Badge tone="default">仅试听前 30 秒</Badge>
+            <Badge tone="default">仅试听前 {MAX_PREVIEW_SECONDS} 秒</Badge>
             <IconButton onClick={() => setMuted(value => !value)} aria-label="静音">
               {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
             </IconButton>

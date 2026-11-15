@@ -1,6 +1,22 @@
-import type { CatalogInfo, ProviderSearchResult, Quality, TrackRef } from '@shared/types'
+import type {
+  CatalogInfo,
+  ProviderArtistTracksResult,
+  ProviderEntitySearchResult,
+  ProviderSearchResult,
+  Quality,
+  SearchEntityKind,
+  SearchEntityRef,
+  TrackRef
+} from '@shared/types'
 import { coverUrl, requestJson } from './http'
-import { decodeName, formatSize, makeTrack, makeTypes } from './helpers'
+import {
+  decodeName,
+  formatSize,
+  makeEntity,
+  makeTrack,
+  makeTypes,
+  positiveNumber
+} from './helpers'
 import { AppError } from '../errors'
 import { formatDuration } from '@shared/utils'
 
@@ -70,6 +86,128 @@ export async function searchWy(query: string, page: number, limit: number): Prom
     page,
     limit,
     hasMore: page * limit < total
+  }
+}
+
+function formatPublishDate(value: unknown): string | undefined {
+  const timestamp = Number(value)
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return undefined
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return undefined
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date)
+  const valueOf = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find(part => part.type === type)?.value
+  return `${valueOf('year')}-${valueOf('month')}-${valueOf('day')}`
+}
+
+function entityFromWy(raw: Record<string, any>, kind: SearchEntityKind): SearchEntityRef | null {
+  const id = String(raw.id ?? '')
+  const name = decodeName(raw.name ?? '')
+  if (!id || !name) return null
+
+  if (kind === 'album') {
+    const artists = Array.isArray(raw.artists) ? raw.artists : []
+    return makeEntity({
+      provider: 'wy',
+      kind,
+      id,
+      name,
+      author: decodeName(raw.artist?.name ?? artists.map((item: any) => item.name).join('、')),
+      coverUrl: coverUrl(raw.picUrl ?? raw.blurPicUrl),
+      subtitle: formatPublishDate(raw.publishTime),
+      trackCount: positiveNumber(raw.size)
+    })
+  }
+
+  if (kind === 'artist') {
+    const aliases = Array.isArray(raw.alias) ? raw.alias : []
+    return makeEntity({
+      provider: 'wy',
+      kind,
+      id,
+      name,
+      author: decodeName(aliases.join(' / ')),
+      coverUrl: coverUrl(raw.picUrl ?? raw.img1v1Url),
+      albumCount: positiveNumber(raw.albumSize),
+      songCount: positiveNumber(raw.musicSize)
+    })
+  }
+
+  return makeEntity({
+    provider: 'wy',
+    kind,
+    id,
+    name,
+    author: decodeName(raw.creator?.nickname ?? ''),
+    coverUrl: coverUrl(raw.coverImgUrl),
+    subtitle: decodeName(raw.description ?? '').slice(0, 160),
+    trackCount: positiveNumber(raw.trackCount)
+  })
+}
+
+export async function searchWyEntities(
+  kind: SearchEntityKind,
+  query: string,
+  page: number,
+  limit: number
+): Promise<ProviderEntitySearchResult> {
+  const type = kind === 'album' ? 10 : kind === 'artist' ? 100 : 1000
+  const url = `https://music.163.com/api/cloudsearch/pc?s=${encodeURIComponent(query)}&type=${type}&limit=${limit}&offset=${(page - 1) * limit}`
+  const body = await requestJson<Record<string, any>>(url, {
+    headers: { Referer: 'https://music.163.com/' }
+  })
+  const result = body.result ?? {}
+  const rawList =
+    kind === 'album'
+      ? result.albums ?? []
+      : kind === 'artist'
+        ? result.artists ?? []
+        : result.playlists ?? []
+  const total =
+    positiveNumber(
+      kind === 'album'
+        ? result.albumCount
+        : kind === 'artist'
+          ? result.artistCount
+          : result.playlistCount
+    ) ?? (Array.isArray(rawList) ? rawList.length : 0)
+  return {
+    provider: 'wy',
+    kind,
+    list: (Array.isArray(rawList) ? rawList : [])
+      .map((item: Record<string, any>) => entityFromWy(item, kind))
+      .filter((item): item is SearchEntityRef => Boolean(item)),
+    total,
+    page,
+    limit,
+    hasMore: page * limit < total
+  }
+}
+
+export async function getWyArtistTracks(
+  artistId: string,
+  page: number,
+  limit: number
+): Promise<ProviderArtistTracksResult> {
+  const body = await requestJson<Record<string, any>>(
+    `https://music.163.com/api/v1/artist/songs?id=${encodeURIComponent(artistId)}&limit=${limit}&offset=${(page - 1) * limit}`,
+    { headers: { Referer: 'https://music.163.com/' } }
+  )
+  const rawList = Array.isArray(body.songs) ? body.songs : []
+  const total = positiveNumber(body.total) ?? rawList.length
+  return {
+    provider: 'wy',
+    artistId,
+    list: rawList.map((item: Record<string, any>) => trackFromRaw(item)),
+    page,
+    limit,
+    total,
+    hasMore: Boolean(body.more) || page * limit < total
   }
 }
 

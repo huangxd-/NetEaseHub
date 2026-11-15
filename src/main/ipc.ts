@@ -4,7 +4,9 @@ import { extname } from 'node:path'
 import { z } from 'zod'
 import type {
   AppInfo,
+  ArtistTracksRequest,
   DiagnosticResult,
+  EntitySearchRequest,
   IpcResult,
   PreviewLease,
   ProviderId,
@@ -19,6 +21,8 @@ import {
   cloudMatchSchema,
   cloudSuggestSchema,
   enqueueUploadSchema,
+  artistTracksRequestSchema,
+  entitySearchRequestSchema,
   previewCreateSchema,
   searchRequestSchema,
   settingsPatchSchema,
@@ -36,8 +40,11 @@ import { UploadManager } from './services/upload-manager'
 import { UpdateService } from './services/updater'
 import type { PreviewService } from './services/preview'
 import {
+  getArtistTracks,
   resolveCatalog,
+  searchAllEntities,
   searchAllProviders,
+  searchEntities,
   searchProvider
 } from './providers'
 import { parseCatalogLink } from '@shared/utils'
@@ -171,6 +178,32 @@ export function registerIpc(services: IpcServices): void {
         request.limit ?? 30
       )
     ]
+  })
+
+  handle(IPC.searchEntities, async (raw: unknown) => {
+    const request = entitySearchRequestSchema.parse(raw) as EntitySearchRequest
+    if (request.provider === 'all') {
+      return searchAllEntities(request.query, request.kind, request.page ?? 1, request.limit ?? 20)
+    }
+    return [
+      await searchEntities(
+        request.provider,
+        request.kind,
+        request.query,
+        request.page ?? 1,
+        request.limit ?? 20
+      )
+    ]
+  })
+
+  handle(IPC.searchArtistTracks, (raw: unknown) => {
+    const request = artistTracksRequestSchema.parse(raw) as ArtistTracksRequest
+    return getArtistTracks(
+      request.provider,
+      request.artistId,
+      request.page ?? 1,
+      request.limit ?? 50
+    )
   })
 
   handle(IPC.searchCatalog, async (raw: unknown) => {

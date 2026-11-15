@@ -134,10 +134,10 @@ describe('shared utilities', () => {
     expect(wrongArtist).toBeLessThan(exact)
   })
 
-  it('clamps preview playback to the first 30 seconds', () => {
+  it('clamps preview playback to the first 60 seconds', () => {
     expect(clampPreviewPosition(-3)).toBe(0)
     expect(clampPreviewPosition(12.5)).toBe(12.5)
-    expect(clampPreviewPosition(31)).toBe(30)
+    expect(clampPreviewPosition(61)).toBe(60)
     expect(clampPreviewPosition(Number.NaN)).toBe(0)
   })
 

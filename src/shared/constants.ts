@@ -20,7 +20,7 @@ export const QUALITY_LABELS: Record<Quality, string> = {
   flac24bit: 'Hi-Res'
 }
 
-export const MAX_PREVIEW_SECONDS = 30
+export const MAX_PREVIEW_SECONDS = 60
 export const PREVIEW_LEASE_MS = 5 * 60 * 1000
 export const MAX_SCRIPT_BYTES = 2 * 1024 * 1024
 export const MAX_BATCH_WARNING = 50

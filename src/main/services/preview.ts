@@ -90,7 +90,7 @@ export class PreviewService {
       trackKey: track.key,
       streamUrl: `neteasehub-preview://preview/${id}`,
       expiresAt,
-      maxPlaybackSec: 30
+      maxPlaybackSec: 60
     }
   }
 

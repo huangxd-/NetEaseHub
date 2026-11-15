@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { UploadDraft, UploadStage } from '@shared/types'
-import { QUALITY_LABELS } from '@shared/constants'
+import { MAX_PREVIEW_SECONDS, QUALITY_LABELS } from '@shared/constants'
 import { isUploadActive } from '@shared/utils'
 import { useAppStore } from '../store/app-store'
 import { errorMessage, unwrap } from '../lib/api'
@@ -318,7 +318,7 @@ export function TasksPage() {
                   <div className="flex shrink-0 items-center gap-1">
                     <IconButton
                       onClick={() => void preview.playTrack(draft.track)}
-                      title="试听 30 秒"
+                      title={`试听 ${MAX_PREVIEW_SECONDS} 秒`}
                     >
                       <Play size={14} />
                     </IconButton>
@@ -359,7 +359,7 @@ export function TasksPage() {
         <EmptyState
           icon={<UploadCloud size={22} />}
           title="还没有上传任务"
-          description="从搜索或专辑/歌单页面选择歌曲后，任务会出现在这里。建议先试听 30 秒确认版本。"
+          description={`从搜索或专辑/歌单页面选择歌曲后，任务会出现在这里。建议先试听 ${MAX_PREVIEW_SECONDS} 秒确认版本。`}
         />
       )}
 

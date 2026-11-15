@@ -1,33 +1,54 @@
-import type { CatalogInfo, ProviderSearchResult, Quality, TrackRef } from '@shared/types'
+import type {
+  CatalogInfo,
+  ProviderArtistTracksResult,
+  ProviderEntitySearchResult,
+  ProviderSearchResult,
+  Quality,
+  SearchEntityKind,
+  SearchEntityRef,
+  TrackRef
+} from '@shared/types'
 import { coverUrl, requestJson, requestText } from './http'
-import { decodeName, formatSize, makeTrack, makeTypes, parseInterval } from './helpers'
+import {
+  decodeName,
+  formatSize,
+  makeEntity,
+  makeTrack,
+  makeTypes,
+  parseInterval,
+  positiveNumber
+} from './helpers'
 import { AppError } from '../errors'
 import { formatDuration } from '@shared/utils'
 
 function qualitiesFromRaw(raw: Record<string, any>): Array<{ type: Quality; size: string | null; hash?: string }> {
   const entries: Array<{ type: Quality; size: string | null; hash?: string }> = []
   if (Number(raw.filesize ?? raw.FileSize ?? 0) > 0) {
-    entries.push({ type: '128k', size: formatSize(raw.filesize ?? raw.FileSize), hash: raw.hash ?? raw.FileHash })
+    entries.push({
+      type: '128k',
+      size: formatSize(raw.filesize ?? raw.FileSize),
+      hash: raw.hash ?? raw.FileHash
+    })
   }
-  if (Number(raw.filesize_320 ?? raw.HQFileSize ?? 0) > 0) {
+  if (Number(raw.filesize_320 ?? raw['320filesize'] ?? raw.HQFileSize ?? 0) > 0) {
     entries.push({
       type: '320k',
-      size: formatSize(raw.filesize_320 ?? raw.HQFileSize),
-      hash: raw.hash_320 ?? raw.HQFileHash
+      size: formatSize(raw.filesize_320 ?? raw['320filesize'] ?? raw.HQFileSize),
+      hash: raw.hash_320 ?? raw['320hash'] ?? raw.HQFileHash
     })
   }
-  if (Number(raw.filesize_flac ?? raw.SQFileSize ?? 0) > 0) {
+  if (Number(raw.filesize_flac ?? raw.sqfilesize ?? raw.SQFileSize ?? 0) > 0) {
     entries.push({
       type: 'flac',
-      size: formatSize(raw.filesize_flac ?? raw.SQFileSize),
-      hash: raw.hash_flac ?? raw.SQFileHash
+      size: formatSize(raw.filesize_flac ?? raw.sqfilesize ?? raw.SQFileSize),
+      hash: raw.hash_flac ?? raw.sqhash ?? raw.SQFileHash
     })
   }
-  if (Number(raw.filesize_high ?? raw.ResFileSize ?? 0) > 0) {
+  if (Number(raw.filesize_high ?? raw.filesize_super ?? raw.ResFileSize ?? 0) > 0) {
     entries.push({
       type: 'flac24bit',
-      size: formatSize(raw.filesize_high ?? raw.ResFileSize),
-      hash: raw.hash_high ?? raw.ResFileHash
+      size: formatSize(raw.filesize_high ?? raw.filesize_super ?? raw.ResFileSize),
+      hash: raw.hash_high ?? raw.hash_super ?? raw.ResFileHash
     })
   }
   return entries
@@ -122,6 +143,102 @@ export async function searchKg(query: string, page: number, limit: number): Prom
     page,
     limit,
     hasMore: page * limit < Number(body.data?.total ?? 0)
+  }
+}
+
+function entityFromKg(raw: Record<string, any>, kind: SearchEntityKind): SearchEntityRef | null {
+  if (kind === 'album') {
+    const id = String(raw.albumid ?? '')
+    const name = decodeName(raw.albumname ?? '')
+    if (!id || !name) return null
+    return makeEntity({
+      provider: 'kg',
+      kind,
+      id,
+      name,
+      author: decodeName(raw.singername ?? ''),
+      coverUrl: coverUrl(raw.imgurl)?.replace('{size}', '500'),
+      subtitle: decodeName(raw.publishtime ?? ''),
+      trackCount: positiveNumber(raw.songcount)
+    })
+  }
+
+  if (kind === 'playlist') {
+    const id = String(raw.specialid ?? '')
+    const name = decodeName(raw.specialname ?? '')
+    if (!id || !name) return null
+    return makeEntity({
+      provider: 'kg',
+      kind,
+      id,
+      name,
+      author: decodeName(raw.nickname ?? ''),
+      coverUrl: coverUrl(raw.imgurl)?.replace('{size}', '500'),
+      subtitle: decodeName(raw.intro ?? '').slice(0, 160),
+      trackCount: positiveNumber(raw.songcount)
+    })
+  }
+
+  const id = String(raw.singerid ?? '')
+  const name = decodeName(raw.singername ?? '')
+  if (!id || !name) return null
+  return makeEntity({
+    provider: 'kg',
+    kind,
+    id,
+    name
+  })
+}
+
+export async function searchKgEntities(
+  kind: SearchEntityKind,
+  query: string,
+  page: number,
+  limit: number
+): Promise<ProviderEntitySearchResult> {
+  const path = kind === 'album' ? 'album' : kind === 'playlist' ? 'special' : 'singer'
+  const pageLimit = kind === 'artist' ? Math.min(limit, 10) : limit
+  const url = `http://mobilecdn.kugou.com/api/v3/search/${path}?keyword=${encodeURIComponent(query)}&page=${page}&pagesize=${pageLimit}&showtype=1`
+  const body = await requestJson<Record<string, any>>(url)
+  const data = body.data ?? {}
+  const rawList = kind === 'artist' ? (Array.isArray(data) ? data : []) : (data.info ?? [])
+  const list = (Array.isArray(rawList) ? rawList : [])
+    .map((item: Record<string, any>) => entityFromKg(item, kind))
+    .filter((item): item is SearchEntityRef => Boolean(item))
+  const serverTotal = positiveNumber(data.total)
+  const total =
+    serverTotal ??
+    (kind === 'artist' ? page * pageLimit - pageLimit + list.length : list.length)
+  return {
+    provider: 'kg',
+    kind,
+    list,
+    total,
+    page,
+    limit: pageLimit,
+    hasMore: kind === 'artist' ? list.length >= pageLimit : page * pageLimit < total
+  }
+}
+
+export async function getKgArtistTracks(
+  artistId: string,
+  page: number,
+  limit: number
+): Promise<ProviderArtistTracksResult> {
+  const body = await requestJson<Record<string, any>>(
+    `http://mobiles.kugou.com/api/v5/singer/song?singerid=${encodeURIComponent(artistId)}&page=${page}&pagesize=${limit}`
+  )
+  const data = body.data ?? {}
+  const rawList = Array.isArray(data.info) ? data.info : []
+  const total = positiveNumber(data.total) ?? rawList.length
+  return {
+    provider: 'kg',
+    artistId,
+    list: rawList.map((item: Record<string, any>) => trackFromRaw(item)),
+    page,
+    limit,
+    total,
+    hasMore: page * limit < total
   }
 }
 

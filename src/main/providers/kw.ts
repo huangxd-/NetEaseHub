@@ -1,6 +1,22 @@
-import type { CatalogInfo, ProviderSearchResult, Quality, TrackRef } from '@shared/types'
+import type {
+  CatalogInfo,
+  ProviderArtistTracksResult,
+  ProviderEntitySearchResult,
+  ProviderSearchResult,
+  Quality,
+  SearchEntityKind,
+  SearchEntityRef,
+  TrackRef
+} from '@shared/types'
 import { coverUrl, requestJson } from './http'
-import { decodeName, makeTrack, makeTypes, parseInterval } from './helpers'
+import {
+  decodeName,
+  makeEntity,
+  makeTrack,
+  makeTypes,
+  parseInterval,
+  positiveNumber
+} from './helpers'
 import { AppError } from '../errors'
 import { formatDuration } from '@shared/utils'
 
@@ -70,6 +86,105 @@ export async function searchKw(query: string, page: number, limit: number): Prom
     page,
     limit,
     hasMore: page * limit < Number(body.TOTAL ?? body.total ?? 0)
+  }
+}
+
+function entityFromKw(raw: Record<string, any>, kind: SearchEntityKind): SearchEntityRef | null {
+  if (kind === 'album') {
+    const id = String(raw.albumid ?? raw.id ?? '')
+    const name = decodeName(raw.name ?? '')
+    if (!id || !name) return null
+    return makeEntity({
+      provider: 'kw',
+      kind,
+      id,
+      name,
+      author: decodeName(raw.artist ?? raw.aartist ?? ''),
+      coverUrl: coverUrl(raw.hts_img ?? raw.img),
+      subtitle: decodeName(raw.pub ?? ''),
+      trackCount: positiveNumber(raw.musiccnt)
+    })
+  }
+
+  if (kind === 'playlist') {
+    const id = String(raw.playlistid ?? raw.DC_TARGETID ?? raw.id ?? '')
+    const name = decodeName(raw.name ?? '')
+    if (!id || !name) return null
+    return makeEntity({
+      provider: 'kw',
+      kind,
+      id,
+      name,
+      author: decodeName(raw.nickname ?? raw.uname ?? ''),
+      coverUrl: coverUrl(raw.hts_pic ?? raw.pic ?? raw.img),
+      subtitle: decodeName(raw.intro ?? ''),
+      trackCount: positiveNumber(raw.songnum ?? raw.total)
+    })
+  }
+
+  const id = String(raw.ARTISTID ?? raw.artistid ?? raw.id ?? '')
+  const name = decodeName(raw.ARTIST ?? raw.artist ?? raw.name ?? '')
+  if (!id || !name) return null
+  return makeEntity({
+    provider: 'kw',
+    kind,
+    id,
+    name,
+    author: decodeName(raw.COUNTRY ?? raw.country ?? ''),
+    coverUrl: coverUrl(
+      raw.hts_PICPATH ?? raw.PICPATH ?? raw.artistpic,
+      'http://img1.kuwo.cn/star/starheads'
+    ),
+    subtitle: decodeName(raw.desc ?? ''),
+    albumCount: positiveNumber(raw.ALBUMNUM ?? raw.albumnum),
+    songCount: positiveNumber(raw.SONGNUM ?? raw.songnum)
+  })
+}
+
+export async function searchKwEntities(
+  kind: SearchEntityKind,
+  query: string,
+  page: number,
+  limit: number
+): Promise<ProviderEntitySearchResult> {
+  const url = `${SEARCH_BASE}?all=${encodeURIComponent(query)}&ft=${kind}&pn=${page - 1}&rn=${limit}&rformat=json&encoding=utf8&ver=mbox&vipver=MUSIC_8.7.7.0_BCS37&plat=pc&devid=28156413&pay=0&needliveshow=0`
+  const body = await requestJson<Record<string, any>>(url)
+  const source = kind === 'album' ? body.albumlist : body.abslist
+  const rawList = Array.isArray(source) ? source : []
+  const list = rawList
+    .map((item: Record<string, any>) => entityFromKw(item, kind))
+    .filter((item): item is SearchEntityRef => Boolean(item))
+  const total =
+    positiveNumber(body.TOTAL ?? body.total ?? body.rnTotal ?? body.totalCount) ??
+    (list.length < rawList.length ? rawList.length : list.length)
+  return {
+    provider: 'kw',
+    kind,
+    list,
+    total,
+    page,
+    limit,
+    hasMore: page * limit < total
+  }
+}
+
+export async function getKwArtistTracks(
+  artistId: string,
+  page: number,
+  limit: number
+): Promise<ProviderArtistTracksResult> {
+  const url = `${SEARCH_BASE}?all=&ft=music&artistid=${encodeURIComponent(artistId)}&pn=${page - 1}&rn=${limit}&rformat=json&encoding=utf8&ver=mbox&vipver=MUSIC_8.7.7.0_BCS37&plat=pc&devid=28156413`
+  const body = await requestJson<Record<string, any>>(url)
+  const rawList = Array.isArray(body.abslist) ? body.abslist : []
+  const total = positiveNumber(body.TOTAL ?? body.total) ?? rawList.length
+  return {
+    provider: 'kw',
+    artistId,
+    list: rawList.map((item: Record<string, any>) => trackFromRaw(item)),
+    page,
+    limit,
+    total,
+    hasMore: page * limit < total
   }
 }
 

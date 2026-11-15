@@ -32,6 +32,16 @@ function describeCatalog(catalog) {
   }
 }
 
+function describeTrackPage(page) {
+  return {
+    total: page.total,
+    tracks: page.list.length,
+    first: page.list[0]
+      ? `${page.list[0].title} / ${page.list[0].artists.join('、')}`
+      : '无曲目'
+  }
+}
+
 const app = await electron.launch({
   args: ['.'],
   env: {
@@ -65,6 +75,41 @@ try {
       `${provider}: ${item.list.length} 首，共 ${item.total}${item.error ? `，错误：${item.error}` : ''}`
     )
     if (!item.list.length) failed = true
+  }
+
+  const artistByProvider = {}
+  for (const kind of ['album', 'playlist', 'artist']) {
+    console.log(`\n${kind === 'album' ? '专辑' : kind === 'playlist' ? '歌单' : '歌手'}搜索`)
+    const entities = await page.evaluate(
+      async input => window.neteasehub.search.entities(input),
+      { query: SEARCH_QUERY, provider: 'all', kind, page: 1, limit: 5 }
+    )
+    for (const provider of Object.keys(ALBUM_IDS)) {
+      const item = providerResult(entities, provider)
+      if (!entities.ok || !item || !item.list.length) {
+        failed = true
+        console.log(`${provider}: 失败 ${entities.ok ? '无结果' : entities.error.message}`)
+        continue
+      }
+      console.log(
+        `${provider}: ${item.list.length} 条，共 ${item.total}${item.error ? `，错误：${item.error}` : ''}`
+      )
+      if (kind === 'artist') artistByProvider[provider] = item.list[0]
+    }
+  }
+
+  console.log('\n歌手曲目')
+  for (const [provider, artist] of Object.entries(artistByProvider)) {
+    const result = await page.evaluate(
+      async input => window.neteasehub.search.artistTracks(input),
+      { provider, artistId: artist.id, page: 1, limit: 5 }
+    )
+    if (!result.ok || !result.data.list.length) {
+      failed = true
+      console.log(`${provider} ${artist.name}: ${result.ok ? '无曲目' : result.error.message}`)
+      continue
+    }
+    console.log(`${provider} ${artist.name}:`, describeTrackPage(result.data))
   }
 
   console.log('\n专辑')

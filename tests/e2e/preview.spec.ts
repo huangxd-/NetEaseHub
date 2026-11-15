@@ -2,7 +2,7 @@ import { _electron as electron, expect, test, type ElectronApplication, type Pag
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
-const WAV_DURATION_SECONDS = 35
+const WAV_DURATION_SECONDS = 65
 
 function createWav(seconds: number): Buffer {
   const sampleRate = 44_100
@@ -311,7 +311,7 @@ globalThis.lx.send(EVENT_NAMES.inited, {
   }
 })
 
-test('player stops at 30 seconds and releases the previous lease on switch', async () => {
+test('player stops at 60 seconds and releases the previous lease on switch', async () => {
   test.setTimeout(90_000)
   const { server, baseUrl } = await startAudioServer(createWav(WAV_DURATION_SECONDS))
   const { app, page } = await launchApp()
@@ -341,12 +341,12 @@ test('player stops at 30 seconds and releases the previous lease on switch', asy
 
     await page.getByRole('button', { name: /任务队列/ }).click()
     await expect(page.getByText('试听一', { exact: true }).first()).toBeVisible()
-    const previewButtons = page.locator('button[title="试听 30 秒"]')
+    const previewButtons = page.locator('button[title="试听 60 秒"]')
     await expect(previewButtons).toHaveCount(2)
     await previewButtons.nth(0).click()
 
     const audio = page.locator('audio')
-    await expect(page.getByText('仅试听前 30 秒')).toBeVisible()
+    await expect(page.getByText('仅试听前 60 秒')).toBeVisible()
     await expect
       .poll(() => audio.evaluate(element => (element as HTMLAudioElement).readyState))
       .toBeGreaterThanOrEqual(1)
@@ -354,7 +354,7 @@ test('player stops at 30 seconds and releases the previous lease on switch', asy
     const firstSrc = await audio.evaluate(element => element.src)
     await audio.evaluate(element => {
       const media = element as HTMLAudioElement
-      media.currentTime = 30.01
+      media.currentTime = 60.01
       media.dispatchEvent(new Event('timeupdate', { bubbles: true }))
     })
     await expect
@@ -379,7 +379,7 @@ test('player stops at 30 seconds and releases the previous lease on switch', asy
 
     await audio.evaluate(element => {
       const media = element as HTMLAudioElement
-      media.currentTime = 32
+      media.currentTime = 62
       media.dispatchEvent(new Event('seeking', { bubbles: true }))
     })
     await expect

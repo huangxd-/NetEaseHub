@@ -10,6 +10,8 @@ export const IPC = {
   authGetState: 'auth:get-state',
   authLogout: 'auth:logout',
   searchQuery: 'search:query',
+  searchEntities: 'search:entities',
+  searchArtistTracks: 'search:artist-tracks',
   searchCatalog: 'catalog:resolve',
   catalogFromNetease: 'catalog:netease',
   previewCreate: 'preview:create',

@@ -1,6 +1,22 @@
-import type { CatalogInfo, ProviderSearchResult, Quality, TrackRef } from '@shared/types'
+import type {
+  CatalogInfo,
+  ProviderArtistTracksResult,
+  ProviderEntitySearchResult,
+  ProviderSearchResult,
+  Quality,
+  SearchEntityKind,
+  SearchEntityRef,
+  TrackRef
+} from '@shared/types'
 import { coverUrl, requestJson } from './http'
-import { decodeName, formatSize, makeTrack, makeTypes } from './helpers'
+import {
+  decodeName,
+  formatSize,
+  makeEntity,
+  makeTrack,
+  makeTypes,
+  positiveNumber
+} from './helpers'
 import { AppError } from '../errors'
 import { formatDuration } from '@shared/utils'
 
@@ -110,6 +126,120 @@ export async function searchMg(query: string, page: number, limit: number): Prom
     page,
     limit,
     hasMore: page * limit < total
+  }
+}
+
+function entityFromMg(raw: Record<string, any>, kind: SearchEntityKind): SearchEntityRef | null {
+  const id = String(raw.id ?? '')
+  const name = decodeName(raw.name ?? '')
+  if (!id || !name) return null
+
+  if (kind === 'album') {
+    if (raw.resourceType !== '2003' && raw.type !== '1') return null
+    return makeEntity({
+      provider: 'mg',
+      kind,
+      id,
+      name,
+      author: decodeName(raw.singer ?? ''),
+      coverUrl: coverUrl(raw.imgItems?.[0]?.img),
+      subtitle: decodeName(raw.publishDate ?? raw.desc ?? ''),
+      trackCount: positiveNumber(raw.songCount ?? raw.musicNum)
+    })
+  }
+
+  if (kind === 'artist') {
+    return makeEntity({
+      provider: 'mg',
+      kind,
+      id,
+      name
+    })
+  }
+
+  const tags = Array.isArray(raw.ts) ? raw.ts : []
+  return makeEntity({
+    provider: 'mg',
+    kind,
+    id,
+    name,
+    author: decodeName(raw.userName ?? ''),
+    coverUrl: coverUrl(raw.musicListPicUrl),
+    subtitle: decodeName(tags.join(' · ')),
+    trackCount: positiveNumber(raw.musicNum)
+  })
+}
+
+export async function searchMgEntities(
+  kind: SearchEntityKind,
+  query: string,
+  page: number,
+  limit: number
+): Promise<ProviderEntitySearchResult> {
+  const searchSwitch = encodeURIComponent(
+    JSON.stringify({
+      song: 0,
+      album: kind === 'album' ? 1 : 0,
+      singer: kind === 'artist' ? 1 : 0,
+      tagSong: 0,
+      mvSong: 0,
+      songlist: kind === 'playlist' ? 1 : 0,
+      bestShow: 0
+    })
+  )
+  const url = `https://app.c.nf.migu.cn/MIGUM2.0/v1.0/content/search_all.do?isCopyright=1&isCorrect=1&pageNo=${page}&pageSize=${limit}&searchSwitch=${searchSwitch}&sort=0&text=${encodeURIComponent(query)}`
+  const body = await requestJson<Record<string, any>>(url, { headers: MG_HEADERS })
+  if (body.code !== '000000') throw new AppError('PROVIDER_SEARCH_FAILED', '咪咕音乐搜索失败')
+  const result =
+    kind === 'album'
+      ? body.albumResultData
+      : kind === 'artist'
+        ? body.singerResultData
+        : body.songListResultData
+  const rawList = Array.isArray(result?.result) ? result.result : []
+  const total = positiveNumber(result?.totalCount) ?? rawList.length
+  const list = rawList
+    .map((item: Record<string, any>) => entityFromMg(item, kind))
+    .filter((item: SearchEntityRef | null): item is SearchEntityRef => Boolean(item))
+  return {
+    provider: 'mg',
+    kind,
+    list,
+    total,
+    page,
+    limit,
+    hasMore: page * limit < total
+  }
+}
+
+export async function getMgArtistTracks(
+  artistId: string,
+  page: number,
+  limit: number
+): Promise<ProviderArtistTracksResult> {
+  const body = await requestJson<Record<string, any>>(
+    `https://app.c.nf.migu.cn/pc/bmw/singer/song/v1.0?singerId=${encodeURIComponent(artistId)}&pageNo=${page}&type=1`,
+    { headers: MG_HEADERS }
+  )
+  if (body.code !== '000000') {
+    throw new AppError('ARTIST_TRACKS_FAILED', '咪咕音乐歌手曲目获取失败')
+  }
+  const contents = Array.isArray(body.data?.contents) ? body.data.contents : []
+  const scroll = contents.find(
+    (item: Record<string, any>) => item.view === 'ZJ-Singer-Song-Scroll'
+  )
+  const rawList = Array.isArray(scroll?.contents) ? scroll.contents : []
+  return {
+    provider: 'mg',
+    artistId,
+    list: rawList
+      .map((item: Record<string, any>) => item.songItem)
+      .filter(Boolean)
+      .map((item: Record<string, any>) => songFromRaw(item)),
+    page,
+    limit,
+    hasMore: Boolean(body.data?.header?.nextPageUrl),
+    total: positiveNumber(body.data?.header?.totalCount)
   }
 }
 

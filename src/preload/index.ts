@@ -33,6 +33,8 @@ const api: NetEaseHubBridge = {
   },
   search: {
     query: request => invoke(IPC.searchQuery, request),
+    entities: request => invoke(IPC.searchEntities, request),
+    artistTracks: request => invoke(IPC.searchArtistTracks, request),
     catalog: request => invoke(IPC.searchCatalog, request)
   },
   preview: {
