@@ -37,6 +37,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - run: pnpm exec install-electron
       - run: pnpm test:e2e
       - uses: actions/upload-artifact@v4
         if: failure()

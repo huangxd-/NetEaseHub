@@ -53,6 +53,7 @@ pnpm build
 ```
 
 端到端测试使用 Playwright Electron，首次运行需要先生成 `out/` 构建产物。
+`pnpm test:e2e` 会先串行执行 `install-electron`，避免多个 Playwright worker 并发下载 Electron 运行时。
 
 真实平台连通性冒烟：
 

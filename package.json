@@ -15,6 +15,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "pretest:e2e": "install-electron",
     "test:e2e": "playwright test",
     "smoke:providers": "node scripts/provider-smoke.mjs",
     "pack:mac": "npm run build && electron-builder --mac --arm64 --x64 --publish never",
