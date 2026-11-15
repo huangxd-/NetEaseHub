@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b1014"/>
+      <stop offset="0.52" stop-color="#120d11"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#fb7185"/>
+      <stop offset="0.55" stop-color="#f43f5e"/>
+      <stop offset="1" stop-color="#f59e0b"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.32" cy="0.2" r="0.8">
+      <stop offset="0" stop-color="#fb7185" stop-opacity="0.24"/>
+      <stop offset="0.55" stop-color="#f43f5e" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#f43f5e" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="28" stdDeviation="28" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" rx="230" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="230" fill="url(#glow)"/>
+  <circle cx="512" cy="500" r="314" fill="none" stroke="#ffffff" stroke-opacity="0.045" stroke-width="2"/>
+  <g filter="url(#shadow)">
+    <path
+      d="M290 564c0-68 55-123 123-123 17 0 34 3 49 10 31-74 104-126 189-126 114 0 206 92 206 206 0 13-1 25-4 37 40 17 68 57 68 103 0 62-50 112-112 112H342c-88 0-159-71-159-159 0-36 12-69 32-95 37-27 62-27 75-65Z"
+      fill="#ffffff"
+      fill-opacity="0.94"
+    />
+    <path
+      d="M290 564c0-68 55-123 123-123 17 0 34 3 49 10 31-74 104-126 189-126 114 0 206 92 206 206 0 13-1 25-4 37 40 17 68 57 68 103 0 62-50 112-112 112H342c-88 0-159-71-159-159 0-36 12-69 32-95 37-27 62-27 75-65Z"
+      fill="none"
+      stroke="#ffffff"
+      stroke-opacity="0.28"
+      stroke-width="10"
+    />
+    <path
+      d="M594 346v266c0 49-40 89-89 89s-89-40-89-89 40-89 89-89c18 0 35 5 49 15V398l232-51v-74L594 346Z"
+      fill="url(#accent)"
+    />
+    <circle cx="752" cy="706" r="64" fill="url(#accent)"/>
+  </g>
+</svg>

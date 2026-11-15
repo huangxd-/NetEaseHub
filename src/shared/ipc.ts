@@ -1,0 +1,60 @@
+export const IPC = {
+  appInfo: 'app:info',
+  appOpenExternal: 'app:open-external',
+  appShowItem: 'app:show-item',
+  appPickFile: 'app:pick-file',
+  appPickDirectory: 'app:pick-directory',
+  appPickImage: 'app:pick-image',
+  authStartQr: 'auth:start-qr',
+  authCheckQr: 'auth:check-qr',
+  authGetState: 'auth:get-state',
+  authLogout: 'auth:logout',
+  searchQuery: 'search:query',
+  searchCatalog: 'catalog:resolve',
+  catalogFromNetease: 'catalog:netease',
+  previewCreate: 'preview:create',
+  previewRelease: 'preview:release',
+  sourcesList: 'sources:list',
+  sourcesImport: 'sources:import',
+  sourcesRemove: 'sources:remove',
+  sourcesToggle: 'sources:toggle',
+  sourcesReorder: 'sources:reorder',
+  sourcesReload: 'sources:reload',
+  uploadsList: 'uploads:list',
+  uploadsEnqueue: 'uploads:enqueue',
+  uploadsUpdate: 'uploads:update',
+  uploadsStart: 'uploads:start',
+  uploadsRetryFailed: 'uploads:retry-failed',
+  uploadsCancel: 'uploads:cancel',
+  uploadsClearFinished: 'uploads:clear-finished',
+  uploadsSummary: 'uploads:summary',
+  cloudList: 'cloud:list',
+  cloudLoadAll: 'cloud:load-all',
+  cloudDelete: 'cloud:delete',
+  cloudSearchCatalog: 'cloud:search-catalog',
+  cloudMatch: 'cloud:match',
+  cloudUnmatch: 'cloud:unmatch',
+  cloudSuggest: 'cloud:suggest',
+  settingsGet: 'settings:get',
+  settingsUpdate: 'settings:update',
+  updateCheck: 'updates:check',
+  updateOpen: 'updates:open',
+  diagnosticsRun: 'diagnostics:run'
+} as const
+
+export const EVENTS = {
+  uploadUpdated: 'upload:updated',
+  uploadBatch: 'upload:batch',
+  sourceStatus: 'source:status',
+  authChanged: 'auth:changed',
+  previewExpired: 'preview:expired'
+} as const
+
+export const SOURCE_RUNTIME_EVENTS = {
+  init: 'neteasehub:source:init',
+  request: 'neteasehub:source:request',
+  response: 'neteasehub:source:response',
+  status: 'neteasehub:source:status',
+  updateAlert: 'neteasehub:source:update-alert',
+  openDevTools: 'neteasehub:source:open-devtools'
+} as const
