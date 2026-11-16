@@ -204,6 +204,11 @@ export interface CloudPage {
   offset: number
 }
 
+export interface CloudDeleteResult {
+  deleted: number[]
+  failed: number[]
+}
+
 export interface MatchCandidate {
   songId: number
   title: string
@@ -227,6 +232,10 @@ export interface AppSettings {
   previewQuality: Quality
   writeCover: boolean
   writeLyrics: boolean
+  autoMatchOnUpload: boolean
+  lrclibEnabled: boolean
+  customLyricsApiUrl: string
+  customCoverApiUrl: string
   autoSkipDuplicate: boolean
   downloadConcurrency: number
   uploadConcurrency: number

@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module'
 import type {
   AuthState,
+  CloudDeleteResult,
   CloudPage,
   CloudSong,
   MatchCandidate,
@@ -10,8 +11,11 @@ import type {
 } from '@shared/types'
 import { CLOUD_PAGE_SIZE } from '@shared/constants'
 import { AppError } from '../errors'
-import { logError } from '../logger'
+import { logError, logger } from '../logger'
 import { SecureStore } from './secure-store'
+import { deleteCloudIds } from './cloud-delete'
+import { cloudSongFromRaw } from './cloud-model'
+import { selectAutoMatchCandidate } from './auto-match'
 import {
   diceCoefficient,
   joinArtists,
@@ -186,28 +190,9 @@ export class NeteaseService {
     const raw = response.body?.data ?? response.body?.cloudSongs ?? []
     const list = Array.isArray(raw) ? raw : []
     const songs = list
-      .map((item): CloudSong | null => {
-        const cloudId = Number(item?.id ?? item?.pcId ?? item?.privateCloud?.id ?? 0)
-        if (!cloudId) return null
-        const simple = item.simpleSong ?? {}
-        return {
-          cloudId,
-          matchedSongId: Number(item.songId ?? simple.id ?? 0) || undefined,
-          fileName: String(item.fileName ?? simple.name ?? ''),
-          title: String(simple.name ?? item.songName ?? item.fileName ?? '未知歌曲'),
-          artist: String(
-            item.artist ??
-              simple.ar?.[0]?.name ??
-              simple.artists?.[0]?.name ??
-              '未知歌手'
-          ),
-          album: String(item.album ?? simple.al?.name ?? ''),
-          size: Number(item.fileSize ?? 0),
-          durationSec: Math.round(Number(simple.dt ?? 0) / 1000),
-          md5: item.md5 ? String(item.md5) : undefined,
-          addedAt: Number(item.addTime ?? 0)
-        }
-      })
+      .map((item): CloudSong | null =>
+        item && typeof item === 'object' ? cloudSongFromRaw(item) : null
+      )
       .filter((item): item is CloudSong => Boolean(item))
     const total = Number(response.body?.count ?? response.body?.total ?? songs.length)
     return {
@@ -231,22 +216,44 @@ export class NeteaseService {
     return all
   }
 
-  async deleteCloudSongs(cloudIds: number[]): Promise<void> {
-    if (!cloudIds.length) return
-    const chunks: number[][] = []
-    for (let index = 0; index < cloudIds.length; index += 100) {
-      chunks.push(cloudIds.slice(index, index + 100))
-    }
-    for (const chunk of chunks) {
-      const response = await call('user_cloud_del')({
-        cookie: this.requireCookie(),
-        id: chunk.join(','),
-        timestamp: Date.now()
-      })
-      if (response.body?.code && response.body.code !== 200) {
-        throw new AppError('CLOUD_DELETE_FAILED', String(response.body.msg ?? '云盘删除失败'))
+  async resolveCloudSongIdByMd5(
+    md5: string,
+    attempts = 3
+  ): Promise<number | undefined> {
+    const normalizedMd5 = md5.trim().toLowerCase()
+    if (!normalizedMd5) return undefined
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      try {
+        for (let page = 0; page < 3; page++) {
+          const result = await this.getCloudPage(page * CLOUD_PAGE_SIZE, CLOUD_PAGE_SIZE)
+          const matched = result.list.find(
+            song => song.md5?.trim().toLowerCase() === normalizedMd5
+          )
+          if (matched) return matched.cloudId
+          if (!result.hasMore || result.list.length === 0) break
+        }
+      } catch (error) {
+        logger.warn('核对云盘文件 ID 失败', {
+          attempt: attempt + 1,
+          error: error instanceof Error ? error.name : 'unknown'
+        })
+      }
+      if (attempt < attempts - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000))
       }
     }
+    return undefined
+  }
+
+  async deleteCloudSongs(cloudIds: number[]): Promise<CloudDeleteResult> {
+    const cookie = this.requireCookie()
+    return deleteCloudIds(cloudIds, id =>
+      call('user_cloud_del')({
+        cookie,
+        id,
+        timestamp: Date.now()
+      })
+    )
   }
 
   async searchCatalog(keywords: string, limit = 20): Promise<MatchCandidate[]> {
@@ -313,8 +320,52 @@ export class NeteaseService {
       timestamp: Date.now()
     })
     if (response.body?.code && response.body.code !== 200) {
-      throw new AppError('CLOUD_MATCH_FAILED', String(response.body.msg ?? '云盘匹配失败'))
+      const code = Number(response.body.code)
+      const msg = String(response.body.msg ?? '云盘匹配失败')
+      logger.warn('云盘歌曲匹配失败', {
+        cloudId,
+        songId,
+        code,
+        msg
+      })
+      throw new AppError('CLOUD_MATCH_FAILED', `${msg}（code ${code}）`, {
+        cloudId,
+        songId,
+        code,
+        msg
+      })
     }
+  }
+
+  async autoMatchCloudSong(input: {
+    cloudId: number
+    title: string
+    artist: string
+    durationSec?: number
+  }): Promise<MatchCandidate | undefined> {
+    if (!input.cloudId) return undefined
+    const candidates = await this.searchCatalog(
+      `${input.title} ${input.artist}`.trim(),
+      10
+    )
+    const selected = selectAutoMatchCandidate(input, candidates)
+    if (!selected) {
+      const best = candidates
+        .map(candidate => ({
+          songId: candidate.songId,
+          score: matchScore(input, candidate)
+        }))
+        .sort((a, b) => b.score - a.score)[0]
+      logger.info('上传后未自动匹配网易云曲目', {
+        cloudId: input.cloudId,
+        candidateCount: candidates.length,
+        bestScore: best?.score,
+        bestSongId: best?.songId
+      })
+      return undefined
+    }
+    await this.matchCloudSong(input.cloudId, selected.songId)
+    return selected
   }
 
   async uploadToken(input: {

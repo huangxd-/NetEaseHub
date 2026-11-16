@@ -317,13 +317,13 @@ export function MetadataDialog({
           <div className="mt-4 divide-y divide-[var(--border)] rounded-2xl border border-[var(--border)] px-4">
             <ToggleRow
               label="写入封面"
-              description="优先使用选择的封面，否则尝试来源封面"
+              description="优先使用选择的封面，否则尝试来源封面；写入 APIC/PICTURE，云盘未匹配也可显示"
               checked={writeCover}
               onCheckedChange={setWriteCover}
             />
             <ToggleRow
               label="写入歌词"
-              description="尝试从音源获取歌词并写入音频标签"
+              description="优先使用粘贴的 LRC，否则从音源、平台、LRCLIB 或自定义接口补全同步歌词"
               checked={writeLyrics}
               onCheckedChange={setWriteLyrics}
             />
@@ -349,7 +349,9 @@ export function MetadataDialog({
           ) : null}
 
           <div className={cn('mt-4 rounded-xl px-4 py-3 text-[11px] leading-5', 'border border-sky-400/15 bg-sky-500/[.055] text-sky-100/65')}>
-            网易云云盘接口只接收标题、歌手和专辑作为云端字段；封面、歌词、音轨号等信息会写入音频文件标签。
+            网易云云盘接口只接收标题、歌手和专辑作为云端字段。封面会写入
+            APIC/PICTURE，MP3 歌词会写入 TXXX:LYRICS，FLAC 歌词会写入 LYRICS，
+            因此云盘未匹配到歌曲时也可显示文件内封面和歌词。已经上传的旧文件需要删除后重新上传。
           </div>
         </>
       ) : null}

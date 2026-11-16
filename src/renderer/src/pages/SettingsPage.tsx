@@ -3,10 +3,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowDown,
   ArrowUp,
+  Captions,
   CheckCircle2,
   Cpu,
   Download,
   ExternalLink,
+  FileImage,
   FilePlus2,
   FolderOpen,
   Gauge,
@@ -41,9 +43,11 @@ import { SourceImportDialog } from '../components/SourceImportDialog'
 import {
   Badge,
   Button,
+  Field,
   IconButton,
   NativeSelect,
   Spinner,
+  TextInput,
   Toggle,
   ToggleRow
 } from '../components/ui'
@@ -174,6 +178,9 @@ export function SettingsPage() {
   const [diagnosing, setDiagnosing] = useState(false)
   const [update, setUpdate] = useState<UpdateInfo | null>(null)
   const [updating, setUpdating] = useState(false)
+  const [lyricsApiUrl, setLyricsApiUrl] = useState('')
+  const [coverApiUrl, setCoverApiUrl] = useState('')
+  const [savingApi, setSavingApi] = useState(false)
 
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -187,6 +194,16 @@ export function SettingsPage() {
     queryKey: ['app-info'],
     queryFn: () => unwrap(window.neteasehub.app.info())
   })
+  const savedLyricsApiUrl = settings?.customLyricsApiUrl ?? ''
+  const savedCoverApiUrl = settings?.customCoverApiUrl ?? ''
+
+  useEffect(() => {
+    setLyricsApiUrl(savedLyricsApiUrl)
+  }, [savedLyricsApiUrl])
+
+  useEffect(() => {
+    setCoverApiUrl(savedCoverApiUrl)
+  }, [savedCoverApiUrl])
 
   useEffect(() => {
     const dispose = window.neteasehub.sources.onStatus(() => {
@@ -195,13 +212,32 @@ export function SettingsPage() {
     return dispose
   }, [queryClient])
 
-  const patchSettings = async (patch: Partial<AppSettings>) => {
+  const patchSettings = async (patch: Partial<AppSettings>): Promise<boolean> => {
     try {
       const next = await unwrap(window.neteasehub.settings.update(patch))
       queryClient.setQueryData(['settings'], next)
+      return true
     } catch (error) {
       toast.error(errorMessage(error))
+      return false
     }
+  }
+
+  const saveApiSettings = async () => {
+    const lyrics = lyricsApiUrl.trim()
+    const cover = coverApiUrl.trim()
+    const isValid = (value: string) => !value || /^https?:\/\/\S+$/i.test(value)
+    if (!isValid(lyrics) || !isValid(cover)) {
+      toast.error('接口地址必须以 http:// 或 https:// 开头')
+      return
+    }
+    setSavingApi(true)
+    const saved = await patchSettings({
+      customLyricsApiUrl: lyrics,
+      customCoverApiUrl: cover
+    })
+    setSavingApi(false)
+    if (saved) toast.success('歌词与封面接口已保存')
   }
 
   const reorder = async (index: number, direction: -1 | 1) => {
@@ -261,7 +297,7 @@ export function SettingsPage() {
           </div>
           <h1 className="text-2xl font-semibold tracking-[-0.035em]">设置</h1>
           <p className="mt-2 text-xs text-[var(--text-muted)]">
-            管理账号、洛雪音源、上传默认值和本机诊断信息。
+            管理账号、洛雪音源、歌词封面补全、上传默认值和本机诊断信息。
           </p>
         </div>
         {update?.hasUpdate ? (
@@ -384,6 +420,12 @@ export function SettingsPage() {
               onCheckedChange={writeLyrics => void patchSettings({ writeLyrics })}
             />
             <ToggleRow
+              label="上传后自动匹配网易云曲目"
+              description="仅高置信度自动绑定，用于恢复 SQ / Hi-Res 等曲目信息"
+              checked={settings.autoMatchOnUpload}
+              onCheckedChange={autoMatchOnUpload => void patchSettings({ autoMatchOnUpload })}
+            />
+            <ToggleRow
               label="自动跳过云盘重复文件"
               description="按文件 MD5 比对"
               checked={settings.autoSkipDuplicate}
@@ -395,6 +437,68 @@ export function SettingsPage() {
               checked={settings.keepDownloadedFiles}
               onCheckedChange={keepDownloadedFiles => void patchSettings({ keepDownloadedFiles })}
             />
+          </div>
+        </SettingsCard>
+      </div>
+
+      <div className="mt-4">
+        <SettingsCard
+          title="歌词与封面补全"
+          description="平台和洛雪音源缺失时，继续使用 LRCLIB 同步歌词及自定义接口"
+          icon={<Captions size={16} />}
+        >
+          <div className="grid grid-cols-[230px_1fr] gap-5">
+            <div className="rounded-2xl border border-[var(--border)] bg-white/[.018] px-4">
+              <ToggleRow
+                label="LRCLIB 同步歌词"
+                description="仅在平台内置歌词失败后查询"
+                checked={settings.lrclibEnabled}
+                onCheckedChange={lrclibEnabled => void patchSettings({ lrclibEnabled })}
+              />
+              <div className="pb-4 text-[10px] leading-5 text-[var(--text-dim)]">
+                仅采用带时间轴的 syncedLyrics；plainLyrics 静态歌词不会写入。
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Field
+                label="自定义歌词接口"
+                hint="全部自动来源失败后调用"
+              >
+                <TextInput
+                  value={lyricsApiUrl}
+                  onChange={event => setLyricsApiUrl(event.target.value)}
+                  placeholder="https://api.lrc.cx/lyrics?title={title}&artist={artist}&album={album}"
+                  spellCheck={false}
+                />
+              </Field>
+              <Field
+                label="自定义封面接口"
+                hint="支持直接返回图片或 JSON 封面地址"
+              >
+                <TextInput
+                  value={coverApiUrl}
+                  onChange={event => setCoverApiUrl(event.target.value)}
+                  placeholder="https://api.lrc.cx/cover?title={title}&artist={artist}&album={album}"
+                  spellCheck={false}
+                />
+              </Field>
+              <div className="flex items-end justify-between gap-4">
+                <div className="text-[10px] leading-5 text-[var(--text-dim)]">
+                  占位符：{'{title} {artist} {artists} {album} {duration} {provider} {songId}'}
+                  ；未写占位符时自动追加同名查询参数。留空即禁用。
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void saveApiSettings()}
+                  loading={savingApi}
+                >
+                  <FileImage size={13} />
+                  保存接口配置
+                </Button>
+              </div>
+            </div>
           </div>
         </SettingsCard>
       </div>

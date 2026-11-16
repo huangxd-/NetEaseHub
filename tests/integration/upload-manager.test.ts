@@ -89,6 +89,10 @@ describe('upload manager fixture integration', () => {
       previewQuality: '128k',
       writeCover: false,
       writeLyrics: false,
+      autoMatchOnUpload: true,
+      lrclibEnabled: false,
+      customLyricsApiUrl: '',
+      customCoverApiUrl: '',
       autoSkipDuplicate: false,
       downloadConcurrency: 1,
       uploadConcurrency: 1,
@@ -129,7 +133,15 @@ describe('upload manager fixture integration', () => {
         fileSize: input.fileSize,
         filename: input.filename
       })),
-      completeUpload: vi.fn(async () => 42),
+      completeUpload: vi.fn(async () => 3462160013),
+      resolveCloudSongIdByMd5: vi.fn(async () => 631161079838),
+      autoMatchCloudSong: vi.fn(async () => ({
+        songId: 999,
+        title: '上传测试',
+        artist: '本地歌手',
+        durationSec: 1,
+        score: 1
+      })),
       getAllCloudSongs: vi.fn(async () => [])
     } as unknown as NeteaseService
     const updates: UploadDraft[] = []
@@ -148,7 +160,7 @@ describe('upload manager fixture integration', () => {
 
     const [result] = manager.list()
     expect(result.stage).toBe('completed')
-    expect(result.cloudSongId).toBe(42)
+    expect(result.cloudSongId).toBe(631161079838)
     expect(result.resolvedQuality).toBe('320k')
     expect(sourceManager.resolveUrl).toHaveBeenCalledWith(track, 'auto', 'upload')
     expect(netease.completeUpload).toHaveBeenCalledWith(
@@ -158,11 +170,102 @@ describe('upload manager fixture integration', () => {
         album: '本地专辑'
       })
     )
+    expect(netease.resolveCloudSongIdByMd5).toHaveBeenCalledWith(
+      expect.stringMatching(/^[a-f0-9]{32}$/)
+    )
+    expect(netease.autoMatchCloudSong).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cloudId: 631161079838,
+        title: '上传测试',
+        artist: '本地歌手'
+      })
+    )
     expect(fixture.uploads).toHaveLength(1)
     expect(fixture.uploads[0].size).toBeGreaterThan(0)
     expect(fixture.uploads[0].headers['content-type']).toBe('audio/wav')
     expect(updates.some(update => update.stage === 'downloading')).toBe(true)
     expect(updates.some(update => update.stage === 'uploading')).toBe(true)
+  })
+
+  it('keeps a task completed but skips auto match when the cloud id cannot be verified', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'neteasehub-upload-no-cloud-id-'))
+    cleanup.push(() => rm(root, { recursive: true, force: true }))
+    const fixture = await startUploadFixture(wavFixture())
+    const db = new DatabaseService(root)
+    cleanup.push(async () => db.close())
+    cleanup.push(() => new Promise(resolve => fixture.server.close(() => resolve())))
+
+    const settings: AppSettings = {
+      defaultQuality: 'auto',
+      previewQuality: '128k',
+      writeCover: false,
+      writeLyrics: false,
+      autoMatchOnUpload: true,
+      lrclibEnabled: false,
+      customLyricsApiUrl: '',
+      customCoverApiUrl: '',
+      autoSkipDuplicate: false,
+      downloadConcurrency: 1,
+      uploadConcurrency: 1,
+      keepDownloadedFiles: false,
+      tempDirectory: root,
+      theme: 'dark',
+      disclaimerAccepted: true
+    }
+    const settingsService = {
+      get: vi.fn(() => settings)
+    } as unknown as SettingsService
+    const track: TrackRef = {
+      key: 'wy:upload-no-cloud-id',
+      provider: 'wy',
+      native: { name: '上传测试' },
+      title: '上传测试',
+      artists: ['本地歌手'],
+      album: '本地专辑'
+    }
+    const sourceManager = {
+      resolveUrl: vi.fn(async () => ({
+        url: `${fixture.baseUrl}/audio.wav`,
+        quality: '320k' as const,
+        scriptId: 'fixture',
+        scriptName: 'fixture'
+      })),
+      requestLyric: vi.fn(async () => undefined),
+      requestPic: vi.fn(async () => undefined)
+    } as unknown as SourceManager
+    const autoMatchCloudSong = vi.fn()
+    const netease = {
+      uploadToken: vi.fn(async input => ({
+        needUpload: true,
+        songId: 'song-id',
+        uploadToken: 'upload-token',
+        uploadUrl: `${fixture.baseUrl}/upload`,
+        resourceId: 'resource-id',
+        md5: input.md5,
+        fileSize: input.fileSize,
+        filename: input.filename
+      })),
+      completeUpload: vi.fn(async () => 42),
+      resolveCloudSongIdByMd5: vi.fn(async () => undefined),
+      autoMatchCloudSong,
+      getAllCloudSongs: vi.fn(async () => [])
+    } as unknown as NeteaseService
+    const manager = new UploadManager(db, settingsService, netease, sourceManager, {
+      updated: () => undefined,
+      batch: () => undefined
+    })
+
+    manager.enqueue({
+      tracks: [track],
+      writeCover: false,
+      writeLyrics: false
+    })
+    await manager.start()
+
+    const [result] = manager.list()
+    expect(result.stage).toBe('completed')
+    expect(result.cloudSongId).toBe(42)
+    expect(autoMatchCloudSong).not.toHaveBeenCalled()
   })
 
   it('requeues tasks left active by a previous process', async () => {

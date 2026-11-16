@@ -39,7 +39,10 @@ import {
   Button,
   Card,
   EmptyState,
+  Modal,
   NativeSelect,
+  TextArea,
+  ToggleRow,
   cn
 } from '../components/ui'
 
@@ -89,10 +92,19 @@ export function SearchPage() {
   const [catalogSelected, setCatalogSelected] = useState<Set<string>>(new Set())
   const [editTrack, setEditTrack] = useState<TrackRef | null>(null)
   const [metadataOpen, setMetadataOpen] = useState(false)
+  const [quickUploadTrack, setQuickUploadTrack] = useState<TrackRef | null>(null)
+  const [quickWriteCover, setQuickWriteCover] = useState(true)
+  const [quickWriteLyrics, setQuickWriteLyrics] = useState(true)
+  const [quickLyrics, setQuickLyrics] = useState('')
+  const [quickUploading, setQuickUploading] = useState(false)
 
   const { data: sources = [] } = useQuery({
     queryKey: ['sources'],
     queryFn: () => unwrap(window.neteasehub.sources.list())
+  })
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => unwrap(window.neteasehub.settings.get())
   })
   const enabledSources = sources.filter(source => source.enabled)
 
@@ -332,16 +344,35 @@ export function SearchPage() {
     return false
   }
 
-  const quickUpload = async (track: TrackRef) => {
+  const quickUpload = (track: TrackRef) => {
     if (!requireLogin()) return
+    setQuickUploadTrack(track)
+    setQuickWriteCover(settings?.writeCover ?? true)
+    setQuickWriteLyrics(settings?.writeLyrics ?? true)
+    setQuickLyrics('')
+  }
+
+  const startQuickUpload = async () => {
+    if (!quickUploadTrack) return
+    setQuickUploading(true)
     try {
-      await unwrap(window.neteasehub.uploads.enqueue({ tracks: [track] }))
+      await unwrap(
+        window.neteasehub.uploads.enqueue({
+          tracks: [quickUploadTrack],
+          metadataOverrides: quickLyrics.trim() ? { lyrics: quickLyrics.trim() } : undefined,
+          writeCover: quickWriteCover,
+          writeLyrics: quickWriteLyrics
+        })
+      )
       await unwrap(window.neteasehub.uploads.start())
       await queryClient.invalidateQueries({ queryKey: ['uploads'] })
       await queryClient.invalidateQueries({ queryKey: ['upload-summary'] })
-      toast.success(`已开始上传：${track.title}`)
+      toast.success(`已开始上传：${quickUploadTrack.title}`)
+      setQuickUploadTrack(null)
     } catch (error) {
       toast.error(errorMessage(error))
+    } finally {
+      setQuickUploading(false)
     }
   }
 
@@ -986,6 +1017,95 @@ export function SearchPage() {
           )}
         </div>
       )}
+
+      <Modal
+        open={Boolean(quickUploadTrack)}
+        onOpenChange={open => {
+          if (!open && !quickUploading) setQuickUploadTrack(null)
+        }}
+        title="快速上传"
+        description="选择是否把封面和歌词写入音频文件；云盘未匹配到歌曲时也能显示文件内元数据。"
+        width={560}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => setQuickUploadTrack(null)}
+              disabled={quickUploading}
+            >
+              取消
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void startQuickUpload()}
+              loading={quickUploading}
+            >
+              <UploadCloud size={14} />
+              开始上传
+            </Button>
+          </>
+        }
+      >
+        {quickUploadTrack ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-white/[.025] p-3">
+              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10">
+                {quickUploadTrack.coverUrl ? (
+                  <img
+                    src={quickUploadTrack.coverUrl}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="cover-fallback h-full w-full">
+                    <Disc3 size={20} />
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">{quickUploadTrack.title}</div>
+                <div className="mt-1 truncate text-[11px] text-[var(--text-muted)]">
+                  {quickUploadTrack.artists.join('、')} · {quickUploadTrack.album || '未知专辑'}
+                </div>
+              </div>
+            </div>
+
+            <div className="divide-y divide-[var(--border)] rounded-2xl border border-[var(--border)] px-4">
+              <ToggleRow
+                label="写入封面"
+                description="优先使用已选或来源封面，写入 APIC/PICTURE"
+                checked={quickWriteCover}
+                onCheckedChange={setQuickWriteCover}
+              />
+              <ToggleRow
+                label="写入歌词"
+                description="优先使用已填写 LRC，否则从洛雪、平台、LRCLIB 或自定义接口补全"
+                checked={quickWriteLyrics}
+                onCheckedChange={setQuickWriteLyrics}
+              />
+            </div>
+
+            {quickWriteLyrics ? (
+              <div>
+                <div className="mb-1.5 text-[11px] text-[var(--text-muted)]">
+                  歌词（可选，LRC）
+                </div>
+                <TextArea
+                  className="h-24 font-mono text-[11px]"
+                  value={quickLyrics}
+                  onChange={event => setQuickLyrics(event.target.value)}
+                  placeholder="可粘贴 LRC；留空时自动从洛雪音源或来源音乐平台获取"
+                />
+              </div>
+            ) : null}
+
+            <div className="rounded-xl border border-sky-400/15 bg-sky-500/[.055] px-3.5 py-3 text-[11px] leading-5 text-sky-100/65">
+              关闭开关时不会写入对应标签，但仍会按标题、歌手和专辑信息完成上传。自动获取失败时会在任务列表显示警告。
+            </div>
+          </div>
+        ) : null}
+      </Modal>
 
       <MetadataDialog
         open={metadataOpen}

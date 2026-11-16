@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { buildTagPatch } from '../../src/main/services/tag-writer'
+import {
+  buildTagPatch,
+  buildTagWriteOptions
+} from '../../src/main/services/tag-writer'
 
 describe('tag writer', () => {
   it('maps editable metadata into a music-metadata tag patch', () => {
@@ -22,7 +25,8 @@ describe('tag writer', () => {
           mime: 'image/jpeg',
           data: new Uint8Array([1, 2, 3])
         }
-      }
+      },
+      '.mp3'
     )
 
     expect(patch.title).toBe('夜曲')
@@ -32,6 +36,34 @@ describe('tag writer', () => {
     expect(patch.disk).toEqual({ no: 1, of: 1 })
     expect(patch.date).toBe('2005')
     expect(patch.lyrics).toBe('[00:00.00]夜曲')
+    expect(patch.native).toMatchObject({
+      'TXXX:LYRICS': '[00:00.00]夜曲'
+    })
     expect((patch.picture as any[])[0].format).toBe('image/jpeg')
+  })
+
+  it('writes NetEase-compatible FLAC lyrics tags', () => {
+    const patch = buildTagPatch(
+      {
+        title: '夜曲',
+        artists: ['周杰伦']
+      },
+      {
+        lyrics: '[00:00.00]夜曲'
+      },
+      '.flac'
+    )
+
+    expect(patch.lyrics).toBe('[00:00.00]夜曲')
+    expect(patch.native).toMatchObject({
+      LYRICS: '[00:00.00]夜曲'
+    })
+  })
+
+  it('rewrites legacy ID3 tags while keeping FLAC metadata writable', () => {
+    expect(buildTagWriteOptions('.mp3')).toMatchObject({
+      replaceId3: true
+    })
+    expect(buildTagWriteOptions('.flac')).not.toHaveProperty('replaceId3')
   })
 })

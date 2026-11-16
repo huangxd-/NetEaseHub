@@ -37,6 +37,10 @@ test('launches the desktop shell and navigates core pages', async () => {
       window.getByRole('heading', { name: /洛雪兼容音源/ })
     ).toBeVisible()
     await expect(window.getByText('网易云账号')).toBeVisible()
+    await expect(window.getByText('歌词与封面补全')).toBeVisible()
+    await expect(window.getByText('LRCLIB 同步歌词', { exact: true })).toBeVisible()
+    await expect(window.getByPlaceholder(/api\.lrc\.cx\/lyrics/)).toBeVisible()
+    await expect(window.getByPlaceholder(/api\.lrc\.cx\/cover/)).toBeVisible()
 
     await window.getByRole('button', { name: /云盘管理/ }).click()
     await expect(window.getByText('登录后管理网易云云盘')).toBeVisible()

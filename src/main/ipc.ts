@@ -15,6 +15,7 @@ import type {
   UploadDraft
 } from '@shared/types'
 import { EVENTS, IPC } from '@shared/ipc'
+import { PROVIDER_IDS } from '@shared/constants'
 import {
   catalogRequestSchema,
   cloudDeleteSchema,
@@ -270,9 +271,14 @@ export function registerIpc(services: IpcServices): void {
     )
   )
   handle(IPC.cloudLoadAll, () => netease.getAllCloudSongs())
-  handle(IPC.cloudDelete, (raw: unknown) =>
-    netease.deleteCloudSongs(cloudDeleteSchema.parse(raw).cloudIds)
-  )
+  handle(IPC.cloudDelete, async (raw: unknown) => {
+    const cloudIds = cloudDeleteSchema.parse(raw).cloudIds
+    try {
+      return await netease.deleteCloudSongs(cloudIds)
+    } finally {
+      uploads.invalidateCloudMd5Cache()
+    }
+  })
   handle(IPC.cloudSearchCatalog, (query: unknown, limit: unknown) =>
     netease.searchCatalog(
       z.string().trim().min(1).parse(query),
@@ -300,7 +306,7 @@ export function registerIpc(services: IpcServices): void {
   handle(IPC.diagnosticsRun, async (): Promise<DiagnosticResult> => {
     const auth = await netease.getState(true)
     const providers = await Promise.all(
-      (['kw', 'kg', 'tx', 'wy', 'mg'] as ProviderId[]).map(async provider => {
+      PROVIDER_IDS.map(async provider => {
         try {
           const result = await searchProvider(provider, '周杰伦', 1, 1)
           return {

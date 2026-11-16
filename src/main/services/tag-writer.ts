@@ -1,4 +1,5 @@
-import { updateFile } from 'music-metadata'
+import { updateFile, type WriteOptions } from 'music-metadata'
+import { extname } from 'node:path'
 import type { EditableMetadata } from '@shared/types'
 import { joinArtists } from '@shared/utils'
 import { AppError } from '../errors'
@@ -7,7 +8,8 @@ type TagPatch = Parameters<typeof updateFile>[1]
 
 export function buildTagPatch(
   metadata: EditableMetadata,
-  extras: { cover?: { mime: string; data: Uint8Array }; lyrics?: string }
+  extras: { cover?: { mime: string; data: Uint8Array }; lyrics?: string },
+  extension = ''
 ): TagPatch {
   const patch: TagPatch = {
     title: metadata.title,
@@ -30,7 +32,21 @@ export function buildTagPatch(
       ...(metadata.discTotal ? { of: metadata.discTotal } : {})
     }
   }
-  if (extras.lyrics) patch.lyrics = extras.lyrics
+  if (extras.lyrics) {
+    patch.lyrics = extras.lyrics
+    const ext = extension.replace(/^\./, '').toLowerCase()
+    if (['mp3', 'aac', 'wav'].includes(ext)) {
+      patch.native = {
+        ...(patch.native ?? {}),
+        'TXXX:LYRICS': extras.lyrics
+      }
+    } else if (['flac', 'ogg', 'opus'].includes(ext)) {
+      patch.native = {
+        ...(patch.native ?? {}),
+        LYRICS: extras.lyrics
+      }
+    }
+  }
   if (extras.cover) {
     patch.picture = [
       {
@@ -53,17 +69,25 @@ export function buildTagPatch(
   return patch
 }
 
+export function buildTagWriteOptions(extension: string): WriteOptions {
+  const ext = extension.replace(/^\./, '').toLowerCase()
+  return {
+    backup: false,
+    atomic: true,
+    ...(['mp3', 'aac', 'wav'].includes(ext) ? { replaceId3: true } : {})
+  }
+}
+
 export async function writeTags(
   filePath: string,
   metadata: EditableMetadata,
   extras: { cover?: { mime: string; data: Uint8Array }; lyrics?: string }
 ): Promise<void> {
-  const patch = buildTagPatch(metadata, extras)
+  const extension = extname(filePath)
+  const patch = buildTagPatch(metadata, extras, extension)
+  const options = buildTagWriteOptions(extension)
   try {
-    await updateFile(filePath, patch, {
-      backup: false,
-      atomic: true
-    })
+    await updateFile(filePath, patch, options)
   } catch (error) {
     throw new AppError(
       'TAG_WRITE_FAILED',

@@ -483,7 +483,7 @@ describe('provider fixture integration', () => {
 
   it('parses search results from all five providers', async () => {
     const results = await searchAllProviders('夜曲', 1, 10)
-    expect(results.map(result => result.provider)).toEqual(['kw', 'kg', 'tx', 'wy', 'mg'])
+    expect(results.map(result => result.provider)).toEqual(['tx', 'kw', 'kg', 'wy', 'mg'])
     for (const result of results) {
       expect('error' in result ? result.error : undefined).toBeUndefined()
       expect(result.list).toHaveLength(1)
@@ -499,7 +499,7 @@ describe('provider fixture integration', () => {
     'searches %s entities across all five providers',
     async kind => {
       const results = await searchAllEntities('周杰伦', kind, 1, 10)
-      expect(results.map(result => result.provider)).toEqual(['kw', 'kg', 'tx', 'wy', 'mg'])
+      expect(results.map(result => result.provider)).toEqual(['tx', 'kw', 'kg', 'wy', 'mg'])
       for (const result of results) {
         expect('error' in result ? result.error : undefined).toBeUndefined()
         expect(result.kind).toBe(kind)

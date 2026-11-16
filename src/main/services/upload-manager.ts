@@ -7,6 +7,7 @@ import axios from 'axios'
 import type {
   EditableMetadata,
   EnqueueUploadInput,
+  TrackRef,
   UploadBatchSummary,
   UploadDraft,
   UploadPatch
@@ -29,6 +30,13 @@ import { SettingsService } from './settings'
 import { SourceManager } from './source-manager'
 import { getDownloadsDirectory } from './paths'
 import { writeTags } from './tag-writer'
+import {
+  getBuiltInLyric,
+  getCustomLyric,
+  getLrclibLyric,
+  normalizeSyncedLrc
+} from '../providers/lyrics'
+import { downloadCoverUrl, getCustomCover } from '../providers/cover'
 
 interface ManagerEvents {
   updated: (draft: UploadDraft) => void
@@ -119,6 +127,10 @@ export class UploadManager {
 
   list(): UploadDraft[] {
     return this.db.listUploads().sort((a, b) => b.createdAt - a.createdAt)
+  }
+
+  invalidateCloudMd5Cache(): void {
+    this.cloudMd5Cache = undefined
   }
 
   enqueue(input: EnqueueUploadInput): UploadDraft[] {
@@ -310,12 +322,26 @@ export class UploadManager {
       })
 
       try {
+        const mediaTrack: TrackRef = {
+          ...draft.track,
+          title: draft.metadata.title,
+          artists: draft.metadata.artists.length
+            ? draft.metadata.artists
+            : draft.track.artists,
+          album: draft.metadata.album || draft.track.album
+        }
         const cover = draft.writeCover
-          ? await this.fetchCover(draft)
+          ? await this.fetchCover(draft, mediaTrack)
           : undefined
+        if (draft.writeCover && !cover) {
+          warningParts.push('未获取到封面，已跳过封面写入')
+        }
         const lyrics = draft.writeLyrics
-          ? draft.metadata.lyrics || (await this.sourceManager.requestLyric(draft.track))
+          ? await this.resolveLyrics(draft, mediaTrack)
           : undefined
+        if (draft.writeLyrics && !lyrics) {
+          warningParts.push('未获取到同步歌词，已跳过歌词写入')
+        }
         await writeTags(tempFile, draft.metadata, {
           cover,
           lyrics: lyrics || undefined
@@ -383,7 +409,7 @@ export class UploadManager {
             draft.id
           )
         }
-        const cloudSongId = await this.withRetry(
+        const completedCloudId = await this.withRetry(
           () =>
             this.netease.completeUpload({
               songId: token.songId,
@@ -397,6 +423,41 @@ export class UploadManager {
           3,
           draft.id
         )
+        let resolvedCloudId: number | undefined
+        try {
+          resolvedCloudId = await this.netease.resolveCloudSongIdByMd5(md5)
+        } catch (error) {
+          logger.warn('核对新上传文件云盘 ID 失败', {
+            completedCloudId,
+            error: error instanceof Error ? error.name : 'unknown'
+          })
+        }
+        const cloudSongId = resolvedCloudId ?? completedCloudId
+        if (this.settings.get().autoMatchOnUpload && resolvedCloudId) {
+          try {
+            const matched = await this.netease.autoMatchCloudSong({
+              cloudId: resolvedCloudId,
+              title: draft.metadata.title,
+              artist: draft.metadata.artists[0] || '未知歌手',
+              durationSec: draft.track.durationSec
+            })
+            if (matched) {
+              logger.info('上传后自动匹配成功', {
+                cloudSongId: resolvedCloudId,
+                songId: matched.songId
+              })
+            }
+          } catch (error) {
+            logger.warn('上传后自动匹配失败', {
+              cloudSongId: resolvedCloudId,
+              error: error instanceof Error ? error.name : 'unknown'
+            })
+          }
+        } else if (this.settings.get().autoMatchOnUpload) {
+          logger.warn('未能确认新上传文件的云盘 ID，已跳过自动匹配', {
+            completedCloudId
+          })
+        }
         this.updateDraft(draft, {
           stage: 'completed',
           progress: 100,
@@ -526,7 +587,7 @@ export class UploadManager {
         'Content-MD5': md5,
         'Content-Type': contentType,
         'Content-Length': String(size),
-        'User-Agent': 'NetEaseHub/0.1.0'
+        'User-Agent': 'NetEaseHub/0.2.0'
       },
       validateStatus: status => status >= 200 && status < 400,
       onUploadProgress: progress => {
@@ -541,8 +602,33 @@ export class UploadManager {
     })
   }
 
+  private async resolveLyrics(
+    draft: UploadDraft,
+    track: TrackRef
+  ): Promise<string | undefined> {
+    if (draft.metadata.lyrics?.trim()) return draft.metadata.lyrics.trim()
+
+    const scriptLyrics = normalizeSyncedLrc(await this.sourceManager.requestLyric(track))
+    if (scriptLyrics) return scriptLyrics
+
+    const builtInLyrics = normalizeSyncedLrc(await getBuiltInLyric(track))
+    if (builtInLyrics) return builtInLyrics
+
+    const settings = this.settings.get()
+    if (settings.lrclibEnabled) {
+      const lrclibLyrics = await getLrclibLyric(track)
+      if (lrclibLyrics) return lrclibLyrics
+    }
+    if (settings.customLyricsApiUrl) {
+      const customLyrics = await getCustomLyric(track, settings.customLyricsApiUrl)
+      if (customLyrics) return customLyrics
+    }
+    return undefined
+  }
+
   private async fetchCover(
-    draft: UploadDraft
+    draft: UploadDraft,
+    track: TrackRef
   ): Promise<{ mime: string; data: Uint8Array } | undefined> {
     if (draft.metadata.cover) {
       return {
@@ -550,25 +636,19 @@ export class UploadManager {
         data: Buffer.from(draft.metadata.cover.dataBase64, 'base64')
       }
     }
-    let url = draft.track.coverUrl
-    if (!url) url = await this.sourceManager.requestPic(draft.track)
-    if (!url) return undefined
-    try {
-      const response = await axios.get<ArrayBuffer>(url, {
-        responseType: 'arraybuffer',
-        timeout: 20_000,
-        maxContentLength: 10 * 1024 * 1024,
-        validateStatus: status => status >= 200 && status < 400
-      })
-      const mime = String(response.headers['content-type'] ?? 'image/jpeg').split(';')[0]
-      return {
-        mime: mime.startsWith('image/') ? mime : 'image/jpeg',
-        data: new Uint8Array(response.data)
-      }
-    } catch (error) {
-      logger.warn('封面下载失败', error)
-      return undefined
+
+    if (track.coverUrl) {
+      const image = await downloadCoverUrl(track.coverUrl)
+      if (image) return image
     }
+
+    const sourceCoverUrl = await this.sourceManager.requestPic(track)
+    if (sourceCoverUrl) {
+      const image = await downloadCoverUrl(sourceCoverUrl)
+      if (image) return image
+    }
+
+    return getCustomCover(track, this.settings.get().customCoverApiUrl)
   }
 
   private updateDraft(draft: UploadDraft, patch: Partial<UploadDraft>): UploadDraft {

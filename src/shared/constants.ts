@@ -1,9 +1,9 @@
 import type { ProviderId, Quality } from './types'
 
 export const PROVIDERS = [
+  { id: 'tx', name: 'QQ 音乐', shortName: 'QQ', color: '#31c27c' },
   { id: 'kw', name: '酷我音乐', shortName: '酷我', color: '#ffb300' },
   { id: 'kg', name: '酷狗音乐', shortName: '酷狗', color: '#2f8cff' },
-  { id: 'tx', name: 'QQ 音乐', shortName: 'QQ', color: '#31c27c' },
   { id: 'wy', name: '网易云音乐', shortName: '网易', color: '#e60026' },
   { id: 'mg', name: '咪咕音乐', shortName: '咪咕', color: '#ff5a5f' }
 ] as const

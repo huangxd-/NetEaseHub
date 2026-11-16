@@ -1,7 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type {
-  IpcResult
-} from '@shared/types'
+import type { CloudDeleteResult, IpcResult } from '@shared/types'
 import { EVENTS, IPC } from '@shared/ipc'
 import type { NetEaseHubBridge } from '@shared/bridge'
 
@@ -66,7 +64,8 @@ const api: NetEaseHubBridge = {
   cloud: {
     list: (offset = 0, limit = 200) => invoke(IPC.cloudList, offset, limit),
     loadAll: () => invoke(IPC.cloudLoadAll),
-    delete: (cloudIds: number[]) => invoke<void>(IPC.cloudDelete, { cloudIds }),
+    delete: (cloudIds: number[]) =>
+      invoke<CloudDeleteResult>(IPC.cloudDelete, { cloudIds }),
     searchCatalog: (query: string, limit = 20) =>
       invoke(IPC.cloudSearchCatalog, query, limit),
     match: (cloudId: number, songId: number) =>

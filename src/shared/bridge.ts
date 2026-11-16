@@ -5,6 +5,7 @@ import type {
   AuthState,
   CatalogInfo,
   CatalogLinkRequest,
+  CloudDeleteResult,
   CloudPage,
   CloudSong,
   CloudSuggestion,
@@ -86,7 +87,7 @@ export interface NetEaseHubBridge {
   cloud: {
     list: (offset?: number, limit?: number) => Promise<IpcResult<CloudPage>>
     loadAll: () => Promise<IpcResult<CloudSong[]>>
-    delete: (cloudIds: number[]) => Promise<IpcResult<void>>
+    delete: (cloudIds: number[]) => Promise<IpcResult<CloudDeleteResult>>
     searchCatalog: (query: string, limit?: number) => Promise<IpcResult<MatchCandidate[]>>
     match: (cloudId: number, songId: number) => Promise<IpcResult<void>>
     unmatch: (cloudId: number) => Promise<IpcResult<void>>

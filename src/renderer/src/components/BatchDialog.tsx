@@ -179,11 +179,13 @@ export function BatchDialog() {
       <div className="divide-y divide-[var(--border)] rounded-2xl border border-[var(--border)] px-4">
         <ToggleRow
           label="写入封面"
+          description="写入 APIC/PICTURE，云盘未匹配时也可显示"
           checked={writeCover}
           onCheckedChange={setWriteCover}
         />
         <ToggleRow
           label="写入歌词"
+          description="自动回退洛雪、平台、LRCLIB 和自定义接口，仅写入同步 LRC"
           checked={writeLyrics}
           onCheckedChange={setWriteLyrics}
         />

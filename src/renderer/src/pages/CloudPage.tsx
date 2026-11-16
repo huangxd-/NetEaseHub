@@ -107,15 +107,26 @@ export function CloudPage() {
   const deleteSelected = async () => {
     setDeleting(true)
     try {
-      await unwrap(window.neteasehub.cloud.delete([...selected]))
-      toast.success(`已删除 ${selected.size} 首云盘歌曲`)
-      setSelected(new Set())
-      setDeleteOpen(false)
-      await queryClient.invalidateQueries({ queryKey: ['cloud-songs'] })
+      const result = await unwrap(window.neteasehub.cloud.delete([...selected]))
+      if (!result.failed.length) {
+        toast.success(`已删除 ${result.deleted.length} 首云盘歌曲`)
+        setSelected(new Set())
+        setDeleteOpen(false)
+      } else {
+        setSelected(new Set(result.failed))
+        if (result.deleted.length) {
+          toast.warning(
+            `已删除 ${result.deleted.length} 首，${result.failed.length} 首失败`
+          )
+        } else {
+          toast.error(`${result.failed.length} 首云盘歌曲删除失败，请重试`)
+        }
+      }
     } catch (error) {
       toast.error(errorMessage(error))
     } finally {
       setDeleting(false)
+      await queryClient.invalidateQueries({ queryKey: ['cloud-songs'] })
     }
   }
 
